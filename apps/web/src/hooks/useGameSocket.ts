@@ -1,0 +1,140 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { getSocket } from "@/lib/socket";
+import { GameView } from "@/types/game";
+
+type Ack<T> = (response: { ok: boolean; error?: string } & T) => void;
+
+export const useGameSocket = () => {
+  const socket = useMemo(() => getSocket(), []);
+  const [state, setState] = useState<GameView | null>(null);
+  const [error, setError] = useState<string>("");
+  const [identity, setIdentity] = useState<{ roomId: string; playerId: string } | null>(null);
+
+  useEffect(() => {
+    const identityRaw = window.localStorage.getItem("decrypto_identity");
+    if (identityRaw) {
+      try {
+        const parsed = JSON.parse(identityRaw) as { roomId: string; playerId: string };
+        setIdentity(parsed);
+      } catch {
+        window.localStorage.removeItem("decrypto_identity");
+      }
+    }
+
+    const onUpdate = (nextState: GameView) => setState(nextState);
+    socket.on("state:update", onUpdate);
+
+    return () => {
+      socket.off("state:update", onUpdate);
+    };
+  }, [socket]);
+
+  useEffect(() => {
+    if (!identity) {
+      return;
+    }
+    socket.emit("room:reconnect", identity, (ack: { ok: boolean; error?: string }) => {
+      if (!ack.ok) {
+        setError(ack.error ?? "Reconnect failed");
+      }
+    });
+  }, [identity, socket]);
+
+  const createRoom = (nickname: string, targetPlayerCount: 4 | 6 | 8): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      socket.emit(
+        "room:create",
+        { nickname, targetPlayerCount },
+        (ack: { ok: boolean; roomId?: string; playerId?: string; error?: string }) => {
+          if (!ack.ok || !ack.roomId || !ack.playerId) {
+            reject(new Error(ack.error ?? "Create room failed"));
+            return;
+          }
+          const nextIdentity = { roomId: ack.roomId, playerId: ack.playerId };
+          setIdentity(nextIdentity);
+          window.localStorage.setItem("decrypto_identity", JSON.stringify(nextIdentity));
+          resolve();
+        }
+      );
+    });
+  };
+
+  const joinRoom = (nickname: string, roomId: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      socket.emit("room:join", { nickname, roomId }, (ack: { ok: boolean; roomId?: string; playerId?: string; error?: string }) => {
+        if (!ack.ok || !ack.roomId || !ack.playerId) {
+          reject(new Error(ack.error ?? "Join room failed"));
+          return;
+        }
+        const nextIdentity = { roomId: ack.roomId, playerId: ack.playerId };
+        setIdentity(nextIdentity);
+        window.localStorage.setItem("decrypto_identity", JSON.stringify(nextIdentity));
+        resolve();
+      });
+    });
+  };
+
+  const startGame = (): Promise<void> => {
+    if (!identity) {
+      return Promise.reject(new Error("Not in room"));
+    }
+    return emitWithAck("game:start", identity);
+  };
+
+  const submitClues = (clues: [string, string, string]): Promise<void> => {
+    if (!identity) {
+      return Promise.reject(new Error("Not in room"));
+    }
+    return emitWithAck("speaker:submit", { ...identity, clues });
+  };
+
+  const submitGuess = (targetTeamId: string, guess: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]): Promise<void> => {
+    if (!identity) {
+      return Promise.reject(new Error("Not in room"));
+    }
+    return emitWithAck("guess:submit", { ...identity, targetTeamId, guess });
+  };
+
+  const aiAction = async (teamId: string): Promise<[string, string, string]> => {
+    if (!identity) {
+      throw new Error("Not in room");
+    }
+    return new Promise((resolve, reject) => {
+      socket.emit("ai:action", { ...identity, teamId }, (ack: { ok: boolean; clues?: [string, string, string]; error?: string }) => {
+        if (!ack.ok || !ack.clues) {
+          reject(new Error(ack.error ?? "AI action failed"));
+          return;
+        }
+        resolve(ack.clues);
+      });
+    });
+  };
+
+  const emitWithAck = (event: string, payload: object): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      socket.emit(event, payload, ((ack: { ok: boolean; error?: string }) => {
+        if (!ack.ok) {
+          setError(ack.error ?? "Request failed");
+          reject(new Error(ack.error ?? "Request failed"));
+          return;
+        }
+        setError("");
+        resolve();
+      }) as Ack<Record<string, never>>);
+    });
+  };
+
+  return {
+    state,
+    error,
+    identity,
+    createRoom,
+    joinRoom,
+    startGame,
+    submitClues,
+    submitGuess,
+    aiAction
+  };
+};

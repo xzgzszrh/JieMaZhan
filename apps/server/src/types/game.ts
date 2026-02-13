@@ -1,0 +1,83 @@
+export type TeamId = string;
+export type PlayerId = string;
+
+export type GameStatus = "LOBBY" | "IN_GAME" | "FINISHED";
+export type RoundPhase = "SPEAKING" | "GUESSING";
+
+export type SecretWordSlot = {
+  index: 1 | 2 | 3 | 4;
+  zh: string;
+  en: string;
+};
+
+export type Player = {
+  id: PlayerId;
+  socketId: string;
+  nickname: string;
+  teamId?: TeamId;
+  seatIndex?: number;
+  joinedAt: number;
+};
+
+export type Team = {
+  id: TeamId;
+  label: string;
+  playerIds: PlayerId[];
+  secretWords: SecretWordSlot[];
+  bombs: number;
+  raspberries: number;
+  eliminated: boolean;
+};
+
+export type Attempt = {
+  id: string;
+  round: number;
+  targetTeamId: TeamId;
+  speakerPlayerId: PlayerId;
+  code: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
+  clues: [string, string, string] | null;
+  internalGuess?: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
+  interceptGuesses: Partial<Record<TeamId, [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>>;
+  resolved: boolean;
+  startedAt: number;
+  cluesSubmittedAt?: number;
+};
+
+export type DeductionRow = {
+  round: number;
+  teamId: TeamId;
+  byNumber: Record<1 | 2 | 3 | 4, string>;
+};
+
+export type GameRoom = {
+  id: string;
+  hostPlayerId: PlayerId;
+  targetPlayerCount: 4 | 6 | 8;
+  createdAt: number;
+  status: GameStatus;
+  phase?: RoundPhase;
+  round: number;
+  activeTeamTurn: number;
+  winnerTeamId?: TeamId;
+  players: Record<PlayerId, Player>;
+  teams: Record<TeamId, Team>;
+  teamOrder: TeamId[];
+  currentAttempt?: Attempt;
+  attemptHistory: Attempt[];
+  deductionRows: DeductionRow[];
+  timers: {
+    speakingTimeout?: NodeJS.Timeout;
+  };
+};
+
+export type AgentInterfaceInput = {
+  secretWords: SecretWordSlot[];
+  history: DeductionRow[];
+  code: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
+};
+
+export type AgentInterfaceOutput = {
+  clues: [string, string, string];
+};
+
+export type AgentInterface = (input: AgentInterfaceInput) => Promise<AgentInterfaceOutput>;
