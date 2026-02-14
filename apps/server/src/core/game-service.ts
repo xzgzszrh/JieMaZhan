@@ -442,26 +442,16 @@ export class GameService {
   }
 
   private updateWinner(room: GameRoom): boolean {
-    const teamCount = room.teamOrder.length;
-    const targetRaspberry = teamCount;
-
-    for (const teamId of room.teamOrder) {
-      const team = room.teams[teamId];
-      if (!team.eliminated && team.raspberries >= targetRaspberry) {
-        room.winnerTeamId = team.id;
-        room.winnerTeamIds = [team.id];
-        return true;
-      }
+    const winners = room.teamOrder.filter((teamId) => room.teams[teamId].score >= 2);
+    if (winners.length === 0) {
+      room.winnerTeamId = undefined;
+      room.winnerTeamIds = undefined;
+      return false;
     }
 
-    const aliveTeams = room.teamOrder.filter((teamId) => !room.teams[teamId].eliminated);
-    if (aliveTeams.length === 1) {
-      room.winnerTeamId = aliveTeams[0];
-      room.winnerTeamIds = [aliveTeams[0]];
-      return true;
-    }
-
-    return false;
+    room.winnerTeamId = winners[0];
+    room.winnerTeamIds = winners;
+    return true;
   }
 
   private recordDeduction(room: GameRoom, attempt: Attempt): void {
