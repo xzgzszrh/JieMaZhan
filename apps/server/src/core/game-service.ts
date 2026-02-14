@@ -105,8 +105,8 @@ export class GameService {
 
   leaveRoom(roomId: string, playerId: string): { roomId: string } {
     const room = this.getRoomOrThrow(roomId);
-    if (room.status !== "LOBBY") {
-      throw new Error("Cannot leave after game start");
+    if (room.status !== "LOBBY" && room.status !== "FINISHED") {
+      throw new Error("Cannot leave during active game");
     }
     if (room.hostPlayerId === playerId) {
       throw new Error("Host must disband room");
@@ -116,6 +116,12 @@ export class GameService {
       throw new Error("Player not found");
     }
 
+    if (player.teamId) {
+      const team = room.teams[player.teamId];
+      if (team) {
+        team.playerIds = team.playerIds.filter((id) => id !== playerId);
+      }
+    }
     delete room.players[playerId];
     this.notifyRoomChanged(room.id);
     return { roomId: room.id };

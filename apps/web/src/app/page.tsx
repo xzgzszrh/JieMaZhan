@@ -97,6 +97,8 @@ export default function Page() {
   const phaseSummary = state
     ? state.status === "LOBBY"
       ? "大厅准备阶段"
+      : state.status === "FINISHED"
+        ? "对局结束"
       : state.phase === "SPEAKING"
         ? "发言阶段 · 各队同步发言"
         : "猜测阶段 · 完成全部目标猜测"
@@ -107,6 +109,8 @@ export default function Page() {
       ? isHost
         ? "你的任务：等待人齐后开始游戏"
         : "你的任务：等待房主开始游戏"
+      : state.status === "FINISHED"
+        ? "你的任务：返回主界面"
       : state.phase === "SPEAKING"
         ? canSubmitClues
           ? "你的任务：提交 3 条线索"
@@ -119,6 +123,27 @@ export default function Page() {
             ? "你的状态：已完成本轮全部猜测"
             : `你的任务：提交猜测（${submittedGuessCount}/${guessTargets.length}）`
     : "";
+  const isFinished = state?.status === "FINISHED";
+  const isWinner = Boolean(state && state.me.teamId && (state.winnerTeamIds ?? []).includes(state.me.teamId));
+  const isTieWinner = Boolean(isWinner && (state?.winnerTeamIds?.length ?? 0) > 1);
+  const resultTitle = isWinner ? (isTieWinner ? "并列胜利" : "胜利") : "失败";
+  const resultDescription = isWinner
+    ? isTieWinner
+      ? "你所在队伍达成并列第一。"
+      : "你所在队伍率先达成目标分。"
+    : "本局未达成胜利条件。";
+  const deductionByTeam = useMemo(() => {
+    if (!state) {
+      return [];
+    }
+    return state.teams
+      .map((team) => ({
+        teamId: team.id,
+        teamLabel: team.label,
+        rows: state.deductionRows.filter((row) => row.teamId === team.id)
+      }))
+      .filter((group) => group.rows.length > 0);
+  }, [state]);
   const roundProgress = useMemo(() => {
     if (!state || state.status !== "IN_GAME") {
       return undefined;
@@ -258,6 +283,20 @@ export default function Page() {
     await submitGuess(targetTeamId, guess);
   };
 
+  const returnToHome = async () => {
+    if (!state) {
+      return;
+    }
+    if (isHost) {
+      if (!window.confirm("返回主界面将解散房间，是否继续？")) {
+        return;
+      }
+      await disbandRoom();
+      return;
+    }
+    await leaveRoom();
+  };
+
   const toggleDebugMode = () => {
     const params = new URLSearchParams(window.location.search);
     if (debugMultiPlayer) {
@@ -366,114 +405,131 @@ export default function Page() {
 
       {state && (
         <>
-          <section className="card" style={{ marginTop: 12 }}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <strong>你在 {myTeamLabel}</strong>
-              <span className="badge">Round {state.round}</span>
-            </div>
-            <p className="muted" style={{ margin: "6px 0 0" }}>
-              {phaseSummary}
-            </p>
-            <p className="muted" style={{ margin: "8px 0 0" }}>
-              {taskSummary}
-            </p>
-            {roundProgress && (
-              <div className="progress-block">
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                  <span className="muted">本轮总进度</span>
-                  <span className="muted">
-                    {roundProgress.overallDone}/{roundProgress.overallTotal}
-                  </span>
-                </div>
-                <div className="progress-track">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${progressPercent(roundProgress.overallDone, roundProgress.overallTotal)}%` }}
-                  />
-                </div>
-                <div className="progress-grid">
-                  <div className="progress-item">
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                      <span className="muted">发言</span>
-                      <span className="muted">
-                        {roundProgress.speakingDone}/{roundProgress.speakingTotal}
-                      </span>
-                    </div>
-                    <div className="progress-track mini">
-                      <div
-                        className="progress-fill"
-                        style={{ width: `${progressPercent(roundProgress.speakingDone, roundProgress.speakingTotal)}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="progress-item">
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                      <span className="muted">内猜</span>
-                      <span className="muted">
-                        {roundProgress.internalDone}/{roundProgress.internalTotal}
-                      </span>
-                    </div>
-                    <div className="progress-track mini">
-                      <div
-                        className="progress-fill"
-                        style={{ width: `${progressPercent(roundProgress.internalDone, roundProgress.internalTotal)}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="progress-item">
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                      <span className="muted">截获</span>
-                      <span className="muted">
-                        {roundProgress.interceptDone}/{roundProgress.interceptTotal}
-                      </span>
-                    </div>
-                    <div className="progress-track mini">
-                      <div
-                        className="progress-fill"
-                        style={{ width: `${progressPercent(roundProgress.interceptDone, roundProgress.interceptTotal)}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
+          {isFinished ? (
+            <section className="card" style={{ marginTop: 12 }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <strong>{resultTitle}</strong>
+                <span className="badge">Round {state.round}</span>
               </div>
-            )}
-            {myTeam && <p className="muted" style={{ margin: "8px 0 0" }}>胜利进度：{myTeam.score} / 2 分</p>}
-            {winnerLabels.length > 0 && <p>胜者：{winnerLabels.join("、")}</p>}
-            {state.status === "LOBBY" && (
+              <p className="muted" style={{ margin: "6px 0 0" }}>
+                {resultDescription}
+              </p>
+              {winnerLabels.length > 0 && <p style={{ margin: "10px 0 0" }}>胜者：{winnerLabels.join("、")}</p>}
               <div className="row" style={{ marginTop: 10 }}>
-                {isHost ? (
-                  <>
-                    <button className="btn" onClick={() => startGame()}>
-                      开始游戏
-                    </button>
+                <button className="btn" onClick={returnToHome}>
+                  返回主界面
+                </button>
+              </div>
+            </section>
+          ) : (
+            <section className="card" style={{ marginTop: 12 }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <strong>你在 {myTeamLabel}</strong>
+                <span className="badge">Round {state.round}</span>
+              </div>
+              <p className="muted" style={{ margin: "6px 0 0" }}>
+                {phaseSummary}
+              </p>
+              <p className="muted" style={{ margin: "8px 0 0" }}>
+                {taskSummary}
+              </p>
+              {roundProgress && (
+                <div className="progress-block">
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="muted">本轮总进度</span>
+                    <span className="muted">
+                      {roundProgress.overallDone}/{roundProgress.overallTotal}
+                    </span>
+                  </div>
+                  <div className="progress-track">
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${progressPercent(roundProgress.overallDone, roundProgress.overallTotal)}%` }}
+                    />
+                  </div>
+                  <div className="progress-grid">
+                    <div className="progress-item">
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <span className="muted">发言</span>
+                        <span className="muted">
+                          {roundProgress.speakingDone}/{roundProgress.speakingTotal}
+                        </span>
+                      </div>
+                      <div className="progress-track mini">
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${progressPercent(roundProgress.speakingDone, roundProgress.speakingTotal)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="progress-item">
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <span className="muted">内猜</span>
+                        <span className="muted">
+                          {roundProgress.internalDone}/{roundProgress.internalTotal}
+                        </span>
+                      </div>
+                      <div className="progress-track mini">
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${progressPercent(roundProgress.internalDone, roundProgress.internalTotal)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="progress-item">
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <span className="muted">截获</span>
+                        <span className="muted">
+                          {roundProgress.interceptDone}/{roundProgress.interceptTotal}
+                        </span>
+                      </div>
+                      <div className="progress-track mini">
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${progressPercent(roundProgress.interceptDone, roundProgress.interceptTotal)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {myTeam && <p className="muted" style={{ margin: "8px 0 0" }}>胜利进度：{myTeam.score} / 2 分</p>}
+              {state.status === "LOBBY" && (
+                <div className="row" style={{ marginTop: 10 }}>
+                  {isHost ? (
+                    <>
+                      <button className="btn" onClick={() => startGame()}>
+                        开始游戏
+                      </button>
+                      <button
+                        className="btn secondary"
+                        onClick={async () => {
+                          if (!window.confirm("确定解散房间吗？")) {
+                            return;
+                          }
+                          await disbandRoom();
+                        }}
+                      >
+                        解散房间
+                      </button>
+                    </>
+                  ) : (
                     <button
                       className="btn secondary"
                       onClick={async () => {
-                        if (!window.confirm("确定解散房间吗？")) {
+                        if (!window.confirm("确定退出房间吗？")) {
                           return;
                         }
-                        await disbandRoom();
+                        await leaveRoom();
                       }}
                     >
-                      解散房间
+                      退出房间
                     </button>
-                  </>
-                ) : (
-                  <button
-                    className="btn secondary"
-                    onClick={async () => {
-                      if (!window.confirm("确定退出房间吗？")) {
-                        return;
-                      }
-                      await leaveRoom();
-                    }}
-                  >
-                    退出房间
-                  </button>
-                )}
-              </div>
-            )}
-          </section>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="card" style={{ marginTop: 10 }}>
             <h2 className="title">队伍状态</h2>
@@ -589,33 +645,12 @@ export default function Page() {
                 <span className="muted">{drawerOpen ? "收起" : "展开"}</span>
               </header>
               <div className="drawer-body">
-                {state.deductionRows.map((row, index) => (
-                  <div key={`${row.teamId}-${row.round}-${index}`} style={{ marginBottom: 14 }}>
+                {deductionByTeam.map((group) => (
+                  <div key={group.teamId} style={{ marginBottom: 14 }}>
                     <p className="muted" style={{ margin: "0 0 6px" }}>
-                      {state.teams.find((t) => t.id === row.teamId)?.label} · Round {row.round}
+                      {group.teamLabel}
+                      {group.teamId === state.me.teamId ? "（己方）" : "（对方）"}
                     </p>
-                    {(() => {
-                      const matched = state.history.find((item) => item.round === row.round && item.targetTeamId === row.teamId);
-                      if (!matched || matched.scoreDeltas.length === 0) {
-                        return (
-                          <p className="muted" style={{ margin: "0 0 6px" }}>
-                            本轮加分：无
-                          </p>
-                        );
-                      }
-                      const summary = matched.scoreDeltas
-                        .map((delta) => {
-                          const teamLabel = state.teams.find((t) => t.id === delta.teamId)?.label ?? delta.teamId;
-                          const reason = delta.reason === "INTERCEPT_CORRECT" ? "截获成功" : "对方内猜错误";
-                          return `${teamLabel}+${delta.points}（${reason}）`;
-                        })
-                        .join("，");
-                      return (
-                        <p className="muted" style={{ margin: "0 0 6px" }}>
-                          本轮加分：{summary}
-                        </p>
-                      );
-                    })()}
                     <table className="record-table">
                       <thead>
                         <tr>
@@ -626,17 +661,19 @@ export default function Page() {
                         </tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td>{row.byNumber[1]}</td>
-                          <td>{row.byNumber[2]}</td>
-                          <td>{row.byNumber[3]}</td>
-                          <td>{row.byNumber[4]}</td>
-                        </tr>
+                        {group.rows.map((row, index) => (
+                          <tr key={`${group.teamId}-${row.round}-${index}`}>
+                            <td>{row.byNumber[1]}</td>
+                            <td>{row.byNumber[2]}</td>
+                            <td>{row.byNumber[3]}</td>
+                            <td>{row.byNumber[4]}</td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
                 ))}
-                {state.deductionRows.length === 0 && <p className="muted">尚无记录。</p>}
+                {deductionByTeam.length === 0 && <p className="muted">尚无记录。</p>}
               </div>
             </section>
           </div>
