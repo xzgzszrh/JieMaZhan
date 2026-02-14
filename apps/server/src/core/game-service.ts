@@ -12,6 +12,7 @@ import {
 } from "../types/game.js";
 
 const SPEAKING_TIMEOUT_MS = 60_000;
+const DISCONNECT_TIMEOUT_MS = 30_000;
 
 const randomCode = (): [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4] => {
   const values: Array<1 | 2 | 3 | 4> = [1, 2, 3, 4];
@@ -133,7 +134,7 @@ export class GameService {
       throw new Error("Only host can disband room");
     }
 
-    this.clearSpeakingTimer(room);
+    this.clearAllTimers(room);
     const affectedSocketIds = Object.values(room.players)
       .map((player) => player.socketId)
       .filter((socketId) => Boolean(socketId));
@@ -150,6 +151,7 @@ export class GameService {
       throw new Error("Player not found");
     }
     player.socketId = socketId;
+    this.reconcileDisconnectState(room);
     this.notifyRoomChanged(room.id);
     return room;
   }
@@ -265,12 +267,27 @@ export class GameService {
     return room;
   }
 
+  forceFinishGame(roomId: string, callerPlayerId: string): GameRoom {
+    const room = this.getRoomOrThrow(roomId);
+    if (room.hostPlayerId !== callerPlayerId) {
+      throw new Error("Only host can force finish");
+    }
+    if (room.status !== "IN_GAME") {
+      throw new Error("Game is not in progress");
+    }
+
+    this.finishGame(room, "HOST_FORCED");
+    this.notifyRoomChanged(room.id);
+    return room;
+  }
+
   handleDisconnect(socketId: string): GameRoom[] {
     const impacted: GameRoom[] = [];
     for (const room of this.rooms.values()) {
       const player = Object.values(room.players).find((p) => p.socketId === socketId);
       if (player) {
         player.socketId = "";
+        this.reconcileDisconnectState(room);
         impacted.push(room);
         this.notifyRoomChanged(room.id);
       }
@@ -321,8 +338,10 @@ export class GameService {
       roomId: room.id,
       roomName: room.roomName,
       status: room.status,
+      finishedReason: room.finishedReason,
       phase: room.phase,
       round: room.round,
+      disconnectState: room.disconnectState,
       me: {
         id: me.id,
         nickname: me.nickname,
@@ -408,6 +427,7 @@ export class GameService {
     });
 
     room.phase = "SPEAKING";
+    room.disconnectState = undefined;
     this.armSpeakingTimeout(room);
   }
 
@@ -416,6 +436,18 @@ export class GameService {
       clearTimeout(room.timers.speakingTimeout);
       room.timers.speakingTimeout = undefined;
     }
+  }
+
+  private clearDisconnectTimer(room: GameRoom): void {
+    if (room.timers.disconnectTimeout) {
+      clearTimeout(room.timers.disconnectTimeout);
+      room.timers.disconnectTimeout = undefined;
+    }
+  }
+
+  private clearAllTimers(room: GameRoom): void {
+    this.clearSpeakingTimer(room);
+    this.clearDisconnectTimer(room);
   }
 
   private armSpeakingTimeout(room: GameRoom): void {
@@ -525,9 +557,10 @@ export class GameService {
 
     room.currentAttempts = [];
     room.phase = undefined;
+    room.disconnectState = undefined;
 
     if (this.updateWinner(room)) {
-      room.status = "FINISHED";
+      this.finishGame(room, "NORMAL");
       this.notifyRoomChanged(room.id);
       return;
     }
@@ -546,6 +579,67 @@ export class GameService {
 
     room.winnerTeamIds = winners;
     return true;
+  }
+
+  private finishGame(room: GameRoom, reason: "NORMAL" | "DISCONNECT_TIMEOUT" | "HOST_FORCED"): void {
+    room.status = "FINISHED";
+    room.phase = undefined;
+    room.finishedReason = reason;
+    room.disconnectState = undefined;
+    room.currentAttempts = [];
+    this.clearAllTimers(room);
+    if (reason !== "NORMAL") {
+      room.winnerTeamIds = [];
+    }
+  }
+
+  private reconcileDisconnectState(room: GameRoom): void {
+    if (room.status !== "IN_GAME") {
+      room.disconnectState = undefined;
+      this.clearDisconnectTimer(room);
+      return;
+    }
+
+    const disconnectedPlayerIds = Object.values(room.players)
+      .filter((player) => !player.socketId)
+      .map((player) => player.id);
+
+    if (disconnectedPlayerIds.length === 0) {
+      room.disconnectState = undefined;
+      this.clearDisconnectTimer(room);
+      return;
+    }
+
+    const now = Date.now();
+    const currentDeadline = room.disconnectState?.deadline ?? now + DISCONNECT_TIMEOUT_MS;
+    room.disconnectState = {
+      startedAt: room.disconnectState?.startedAt ?? now,
+      deadline: currentDeadline,
+      disconnectedPlayerIds
+    };
+
+    if (room.timers.disconnectTimeout) {
+      return;
+    }
+
+    const msLeft = Math.max(0, currentDeadline - now);
+    room.timers.disconnectTimeout = setTimeout(() => {
+      room.timers.disconnectTimeout = undefined;
+
+      if (room.status !== "IN_GAME") {
+        return;
+      }
+
+      const stillDisconnected = Object.values(room.players).some((player) => !player.socketId);
+      if (!stillDisconnected) {
+        room.disconnectState = undefined;
+        this.notifyRoomChanged(room.id);
+        return;
+      }
+
+      this.finishGame(room, "DISCONNECT_TIMEOUT");
+      this.notifyRoomChanged(room.id);
+    }, msLeft);
   }
 
   private recordDeduction(room: GameRoom, attempt: Attempt): void {

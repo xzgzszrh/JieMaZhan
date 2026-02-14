@@ -15,6 +15,7 @@ export default function Page() {
     createRoom,
     joinRoom,
     startGame,
+    forceFinishGame,
     leaveRoom,
     disbandRoom,
     submitClues,
@@ -29,6 +30,7 @@ export default function Page() {
   const [guessByTarget, setGuessByTarget] = useState<Record<string, GuessTuple>>({});
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(60);
+  const [disconnectSecondsLeft, setDisconnectSecondsLeft] = useState(30);
 
   const myTeam = useMemo(() => state?.teams.find((t) => t.id === state.me.teamId), [state]);
   const myTeamId = state?.me.teamId;
@@ -131,7 +133,18 @@ export default function Page() {
     ? isTieWinner
       ? "你所在队伍达成并列第一。"
       : "你所在队伍率先达成目标分。"
-    : "本局未达成胜利条件。";
+    : state?.finishedReason === "DISCONNECT_TIMEOUT"
+      ? "有玩家断线超过 30 秒未恢复，系统自动结束本局。"
+      : state?.finishedReason === "HOST_FORCED"
+        ? "房主已强制结束本局。"
+        : "本局未达成胜利条件。";
+  const disconnectedNicknames = useMemo(() => {
+    if (!state?.disconnectState) {
+      return [];
+    }
+    const nicknameMap = new Map(state.teams.flatMap((team) => team.players.map((player) => [player.id, player.nickname] as const)));
+    return state.disconnectState.disconnectedPlayerIds.map((id) => nicknameMap.get(id) ?? id);
+  }, [state]);
   const deductionByTeam = useMemo(() => {
     if (!state) {
       return [];
@@ -232,6 +245,22 @@ export default function Page() {
 
     return () => window.clearInterval(timer);
   }, [state, mySpeakingAttempt]);
+
+  useEffect(() => {
+    if (!state?.disconnectState || state.status !== "IN_GAME") {
+      setDisconnectSecondsLeft(30);
+      return;
+    }
+
+    const updateSeconds = () => {
+      const left = Math.max(0, Math.ceil((state.disconnectState!.deadline - Date.now()) / 1000));
+      setDisconnectSecondsLeft(left);
+    };
+
+    updateSeconds();
+    const timer = window.setInterval(updateSeconds, 250);
+    return () => window.clearInterval(timer);
+  }, [state?.disconnectState, state?.status]);
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -433,6 +462,11 @@ export default function Page() {
               <p className="muted" style={{ margin: "8px 0 0" }}>
                 {taskSummary}
               </p>
+              {state.disconnectState && (
+                <p style={{ margin: "8px 0 0", color: "#ffb86b" }}>
+                  断线提醒：{disconnectedNicknames.join("、")} 已离线，{disconnectSecondsLeft}s 内未重连将自动结束对局。
+                </p>
+              )}
               {roundProgress && (
                 <div className="progress-block">
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
@@ -494,6 +528,21 @@ export default function Page() {
                 </div>
               )}
               {myTeam && <p className="muted" style={{ margin: "8px 0 0" }}>胜利进度：{myTeam.score} / 2 分</p>}
+              {state.status === "IN_GAME" && isHost && (
+                <div className="row" style={{ marginTop: 10 }}>
+                  <button
+                    className="btn secondary"
+                    onClick={async () => {
+                      if (!window.confirm("确定强制结束当前对局吗？")) {
+                        return;
+                      }
+                      await forceFinishGame();
+                    }}
+                  >
+                    强制结束对局
+                  </button>
+                </div>
+              )}
               {state.status === "LOBBY" && (
                 <div className="row" style={{ marginTop: 10 }}>
                   {isHost ? (

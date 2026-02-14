@@ -10,8 +10,14 @@ export type GameView = {
   roomId: string;
   roomName: string;
   status: "LOBBY" | "IN_GAME" | "FINISHED";
+  finishedReason?: "NORMAL" | "DISCONNECT_TIMEOUT" | "HOST_FORCED";
   phase?: "SPEAKING" | "GUESSING";
   round: number;
+  disconnectState?: {
+    startedAt: number;
+    deadline: number;
+    disconnectedPlayerIds: string[];
+  };
   me: { id: string; nickname: string; teamId?: string; isHost: boolean };
   teams: TeamView[];
   currentAttempts: Array<{

@@ -3,6 +3,7 @@ export type PlayerId = string;
 
 export type GameStatus = "LOBBY" | "IN_GAME" | "FINISHED";
 export type RoundPhase = "SPEAKING" | "GUESSING";
+export type FinishedReason = "NORMAL" | "DISCONNECT_TIMEOUT" | "HOST_FORCED";
 
 export type SecretWordSlot = {
   index: 1 | 2 | 3 | 4;
@@ -61,9 +62,15 @@ export type GameRoom = {
   targetPlayerCount: 4 | 6 | 8;
   createdAt: number;
   status: GameStatus;
+  finishedReason?: FinishedReason;
   phase?: RoundPhase;
   round: number;
   winnerTeamIds?: TeamId[];
+  disconnectState?: {
+    startedAt: number;
+    deadline: number;
+    disconnectedPlayerIds: PlayerId[];
+  };
   players: Record<PlayerId, Player>;
   teams: Record<TeamId, Team>;
   teamOrder: TeamId[];
@@ -72,6 +79,7 @@ export type GameRoom = {
   deductionRows: DeductionRow[];
   timers: {
     speakingTimeout?: NodeJS.Timeout;
+    disconnectTimeout?: NodeJS.Timeout;
   };
 };
 

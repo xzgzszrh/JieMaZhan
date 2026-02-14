@@ -6,6 +6,7 @@ import { GameService } from "./core/game-service.js";
 import {
   aiActionSchema,
   createRoomSchema,
+  forceFinishSchema,
   joinRoomSchema,
   reconnectSchema,
   roomActionSchema,
@@ -143,6 +144,17 @@ io.on("connection", (socket) => {
     try {
       const parsed = startGameSchema.parse(payload);
       const room = gameService.startGame(parsed.roomId.toUpperCase(), parsed.playerId);
+      ack?.({ ok: true });
+      broadcastRoom(room.id);
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  socket.on("game:force-finish", (payload, ack) => {
+    try {
+      const parsed = forceFinishSchema.parse(payload);
+      const room = gameService.forceFinishGame(parsed.roomId.toUpperCase(), parsed.playerId);
       ack?.({ ok: true });
       broadcastRoom(room.id);
     } catch (error) {

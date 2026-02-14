@@ -133,6 +133,13 @@ export const useGameSocket = () => {
     return emitWithAck("game:start", identity);
   };
 
+  const forceFinishGame = (): Promise<void> => {
+    if (!identity) {
+      return Promise.reject(new Error("Not in room"));
+    }
+    return emitWithAck("game:force-finish", identity);
+  };
+
   const leaveRoom = async (): Promise<void> => {
     if (!identity) {
       throw new Error("Not in room");
@@ -216,6 +223,7 @@ export const useGameSocket = () => {
     createRoom,
     joinRoom,
     startGame,
+    forceFinishGame,
     leaveRoom,
     disbandRoom,
     submitClues,
