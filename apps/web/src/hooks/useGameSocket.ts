@@ -6,6 +6,14 @@ import { GameView } from "@/types/game";
 
 type Ack<T> = (response: { ok: boolean; error?: string } & T) => void;
 type Identity = { roomId: string; playerId: string };
+export type JoinableRoom = {
+  roomId: string;
+  roomName: string;
+  hostNickname: string;
+  status: "LOBBY" | "IN_GAME" | "FINISHED";
+  currentPlayerCount: number;
+  targetPlayerCount: 4 | 6 | 8;
+};
 
 const parseDebugModeFromUrl = (): boolean => {
   if (typeof window === "undefined") {
@@ -19,6 +27,7 @@ const parseDebugModeFromUrl = (): boolean => {
 export const useGameSocket = () => {
   const socket = useMemo(() => getSocket(), []);
   const [state, setState] = useState<GameView | null>(null);
+  const [availableRooms, setAvailableRooms] = useState<JoinableRoom[]>([]);
   const [error, setError] = useState<string>("");
   const [identity, setIdentity] = useState<Identity | null>(null);
   const debugMultiPlayer = useMemo(() => parseDebugModeFromUrl(), []);
@@ -45,12 +54,24 @@ export const useGameSocket = () => {
     }
 
     const onUpdate = (nextState: GameView) => setState(nextState);
+    const onRoomsUpdate = (rooms: JoinableRoom[]) => setAvailableRooms(rooms);
     socket.on("state:update", onUpdate);
+    socket.on("rooms:update", onRoomsUpdate);
 
     return () => {
       socket.off("state:update", onUpdate);
+      socket.off("rooms:update", onRoomsUpdate);
     };
   }, [identityStorage, identityStorageKey, socket]);
+
+  useEffect(() => {
+    socket.emit("room:list", {}, (ack: { ok: boolean; rooms?: JoinableRoom[]; error?: string }) => {
+      if (!ack.ok || !ack.rooms) {
+        return;
+      }
+      setAvailableRooms(ack.rooms);
+    });
+  }, [socket]);
 
   useEffect(() => {
     if (!identity) {
@@ -147,8 +168,22 @@ export const useGameSocket = () => {
     });
   };
 
+  const refreshJoinableRooms = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      socket.emit("room:list", {}, (ack: { ok: boolean; rooms?: JoinableRoom[]; error?: string }) => {
+        if (!ack.ok || !ack.rooms) {
+          reject(new Error(ack.error ?? "Load rooms failed"));
+          return;
+        }
+        setAvailableRooms(ack.rooms);
+        resolve();
+      });
+    });
+  };
+
   return {
     state,
+    availableRooms,
     error,
     debugMultiPlayer,
     identity,
@@ -157,6 +192,7 @@ export const useGameSocket = () => {
     startGame,
     submitClues,
     submitGuess,
-    aiAction
+    aiAction,
+    refreshJoinableRooms
   };
 };

@@ -11,6 +11,7 @@ export type TeamView = {
 
 export type GameView = {
   roomId: string;
+  roomName: string;
   status: "LOBBY" | "IN_GAME" | "FINISHED";
   phase?: "SPEAKING" | "GUESSING";
   round: number;

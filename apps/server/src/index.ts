@@ -29,6 +29,9 @@ const io = new Server(server, {
 });
 
 const gameService = new GameService();
+const broadcastJoinableRooms = (): void => {
+  io.emit("rooms:update", gameService.listJoinableRooms());
+};
 
 const broadcastRoom = (roomId: string): void => {
   const room = gameService.getRoomOrThrow(roomId);
@@ -46,6 +49,7 @@ gameService.setOnRoomChanged((roomId) => {
   } catch {
     // Ignore room not found in delayed callback.
   }
+  broadcastJoinableRooms();
 });
 
 gameService.setAgentInterface(async ({ code, secretWords }) => {
@@ -59,6 +63,16 @@ gameService.setAgentInterface(async ({ code, secretWords }) => {
 });
 
 io.on("connection", (socket) => {
+  socket.emit("rooms:update", gameService.listJoinableRooms());
+
+  socket.on("room:list", (_payload, ack) => {
+    try {
+      ack?.({ ok: true, rooms: gameService.listJoinableRooms() });
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
   socket.on("room:create", (payload, ack) => {
     try {
       const parsed = createRoomSchema.parse(payload);

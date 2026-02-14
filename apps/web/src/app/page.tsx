@@ -6,9 +6,9 @@ import { useGameSocket } from "@/hooks/useGameSocket";
 const DIGITS = [1, 2, 3, 4] as const;
 
 export default function Page() {
-  const { state, error, identity, debugMultiPlayer, createRoom, joinRoom, startGame, submitClues, submitGuess, aiAction } = useGameSocket();
+  const { state, availableRooms, error, identity, debugMultiPlayer, createRoom, joinRoom, startGame, submitClues, submitGuess, aiAction, refreshJoinableRooms } =
+    useGameSocket();
   const [nickname, setNickname] = useState("");
-  const [roomId, setRoomId] = useState("");
   const [playerCount, setPlayerCount] = useState<4 | 6 | 8>(4);
   const [clues, setClues] = useState<[string, string, string]>(["", "", ""]);
   const [guess, setGuess] = useState<[1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>([1, 2, 3]);
@@ -16,6 +16,13 @@ export default function Page() {
   const [secondsLeft, setSecondsLeft] = useState(60);
 
   const myTeam = useMemo(() => state?.teams.find((t) => t.id === state.me.teamId), [state]);
+  const winnerLabels = useMemo(() => {
+    if (!state) {
+      return [];
+    }
+    const winnerIds = state.winnerTeamIds?.length ? state.winnerTeamIds : state.winnerTeamId ? [state.winnerTeamId] : [];
+    return winnerIds.map((id) => state.teams.find((t) => t.id === id)?.label ?? id);
+  }, [state]);
   const isSpeaker = Boolean(state?.currentAttempt && state.me.id === state.currentAttempt.speakerPlayerId);
   const canSubmitClues = state?.status === "IN_GAME" && state.phase === "SPEAKING" && isSpeaker;
   const canGuess = state?.status === "IN_GAME" && state.phase === "GUESSING" && Boolean(state.currentAttempt?.clues);
@@ -41,12 +48,11 @@ export default function Page() {
     await createRoom(nickname.trim(), playerCount);
   };
 
-  const handleJoin = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!nickname.trim() || !roomId.trim()) {
+  const handleJoinRoom = async (targetRoomId: string) => {
+    if (!nickname.trim()) {
       return;
     }
-    await joinRoom(nickname.trim(), roomId.trim().toUpperCase());
+    await joinRoom(nickname.trim(), targetRoomId.toUpperCase());
   };
 
   const fillByAI = async () => {
@@ -112,16 +118,30 @@ export default function Page() {
           </section>
 
           <section className="card" style={{ marginTop: 10 }}>
-            <h2 className="title">加入房间</h2>
-            <form onSubmit={handleJoin}>
-              <div className="row wrap">
-                <input className="input" placeholder="你的昵称" value={nickname} onChange={(e) => setNickname(e.target.value)} />
-                <input className="input" placeholder="房间号" value={roomId} onChange={(e) => setRoomId(e.target.value)} />
-                <button type="submit" className="btn secondary">
-                  加入
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="title">可用房间</h2>
+              <button className="btn secondary" style={{ width: "auto", minHeight: 34 }} onClick={() => refreshJoinableRooms()}>
+                刷新
+              </button>
+            </div>
+            <div className="row wrap" style={{ marginBottom: 10 }}>
+              <input className="input" placeholder="你的昵称（加入房间时使用）" value={nickname} onChange={(e) => setNickname(e.target.value)} />
+            </div>
+
+            {availableRooms.length === 0 && <p className="muted">当前没有可加入的房间。</p>}
+            {availableRooms.map((room) => (
+              <div key={room.roomId} style={{ borderTop: "1px solid #2a2a2a", paddingTop: 8, marginTop: 8 }}>
+                <p style={{ margin: "0 0 6px" }}>
+                  <strong>{room.roomName}</strong>
+                </p>
+                <p className="muted" style={{ margin: "0 0 8px" }}>
+                  房间号 #{room.roomId} · 房主 {room.hostNickname} · 人数 {room.currentPlayerCount}/{room.targetPlayerCount}
+                </p>
+                <button className="btn secondary" onClick={() => handleJoinRoom(room.roomId)}>
+                  加入该房间
                 </button>
               </div>
-            </form>
+            ))}
           </section>
         </>
       )}
@@ -130,13 +150,16 @@ export default function Page() {
         <>
           <section className="card" style={{ marginTop: 12 }}>
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <strong>#{state.roomId}</strong>
+              <strong>{state.roomName}</strong>
               <span className="badge">Round {state.round}</span>
             </div>
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              房间号 #{state.roomId}
+            </p>
             <p className="muted" style={{ margin: "8px 0 0" }}>
               {state.status === "LOBBY" ? "等待房主开始" : state.status === "IN_GAME" ? `${state.phase === "SPEAKING" ? "发言阶段" : "猜测阶段"}` : "对局结束"}
             </p>
-            {state.winnerTeamId && <p>胜者：{state.teams.find((t) => t.id === state.winnerTeamId)?.label}</p>}
+            {winnerLabels.length > 0 && <p>胜者：{winnerLabels.join("、")}</p>}
             {state.status === "LOBBY" && state.me.id === identity?.playerId && (
               <button className="btn" style={{ marginTop: 10 }} onClick={() => startGame()}>
                 开始游戏
@@ -150,9 +173,7 @@ export default function Page() {
               <div key={team.id} style={{ borderTop: "1px solid #2a2a2a", paddingTop: 8, marginTop: 8 }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <strong>{team.label}</strong>
-                  <span className="muted">
-                    树莓 {team.raspberries} / 炸弹 {team.bombs}
-                  </span>
+                  <span className="muted">积分 {team.score}</span>
                 </div>
                 <p className="muted" style={{ margin: "5px 0" }}>
                   {team.players.map((p) => `${p.nickname}${p.online ? "" : "(离线)"}`).join(" · ")}
@@ -250,6 +271,24 @@ export default function Page() {
                     <p className="muted" style={{ margin: "0 0 6px" }}>
                       {state.teams.find((t) => t.id === row.teamId)?.label} · Round {row.round}
                     </p>
+                    {(() => {
+                      const matched = state.history.find((item) => item.round === row.round && item.targetTeamId === row.teamId);
+                      if (!matched || matched.scoreDeltas.length === 0) {
+                        return <p className="muted" style={{ margin: "0 0 6px" }}>本轮加分：无</p>;
+                      }
+                      const summary = matched.scoreDeltas
+                        .map((delta) => {
+                          const teamLabel = state.teams.find((t) => t.id === delta.teamId)?.label ?? delta.teamId;
+                          const reason = delta.reason === "INTERCEPT_CORRECT" ? "截获成功" : "对方内猜错误";
+                          return `${teamLabel}+${delta.points}（${reason}）`;
+                        })
+                        .join("，");
+                      return (
+                        <p className="muted" style={{ margin: "0 0 6px" }}>
+                          本轮加分：{summary}
+                        </p>
+                      );
+                    })()}
                     <table className="record-table">
                       <thead>
                         <tr>

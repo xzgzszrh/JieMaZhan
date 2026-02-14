@@ -5,6 +5,7 @@ import {
   Attempt,
   DeductionRow,
   GameRoom,
+  JoinableRoomSummary,
   Player,
   RoundPhase,
   Team,
@@ -64,6 +65,7 @@ export class GameService {
     };
     const room: GameRoom = {
       id: roomId,
+      roomName: `${nickname}的房间`,
       hostPlayerId: playerId,
       targetPlayerCount,
       createdAt: Date.now(),
@@ -274,6 +276,7 @@ export class GameService {
 
     return {
       roomId: room.id,
+      roomName: room.roomName,
       status: room.status,
       phase: room.phase,
       round: room.round,
@@ -297,6 +300,25 @@ export class GameService {
       winnerTeamId: room.winnerTeamId,
       winnerTeamIds: room.winnerTeamIds
     };
+  }
+
+  listJoinableRooms(): JoinableRoomSummary[] {
+    const rooms = Array.from(this.rooms.values())
+      .filter((room) => room.status === "LOBBY")
+      .filter((room) => Object.keys(room.players).length < room.targetPlayerCount)
+      .sort((a, b) => b.createdAt - a.createdAt);
+
+    return rooms.map((room) => {
+      const host = room.players[room.hostPlayerId];
+      return {
+        roomId: room.id,
+        roomName: room.roomName,
+        hostNickname: host?.nickname ?? "未知房主",
+        status: room.status,
+        currentPlayerCount: Object.keys(room.players).length,
+        targetPlayerCount: room.targetPlayerCount
+      };
+    });
   }
 
   getRoomOrThrow(roomId: string): GameRoom {

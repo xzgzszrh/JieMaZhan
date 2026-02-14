@@ -57,6 +57,7 @@ export type DeductionRow = {
 
 export type GameRoom = {
   id: string;
+  roomName: string;
   hostPlayerId: PlayerId;
   targetPlayerCount: 4 | 6 | 8;
   createdAt: number;
@@ -75,6 +76,15 @@ export type GameRoom = {
   timers: {
     speakingTimeout?: NodeJS.Timeout;
   };
+};
+
+export type JoinableRoomSummary = {
+  roomId: string;
+  roomName: string;
+  hostNickname: string;
+  status: GameStatus;
+  currentPlayerCount: number;
+  targetPlayerCount: 4 | 6 | 8;
 };
 
 export type AgentInterfaceInput = {
