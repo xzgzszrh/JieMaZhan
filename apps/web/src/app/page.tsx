@@ -119,6 +119,44 @@ export default function Page() {
             ? "你的状态：已完成本轮全部猜测"
             : `你的任务：提交猜测（${submittedGuessCount}/${guessTargets.length}）`
     : "";
+  const roundProgress = useMemo(() => {
+    if (!state || state.status !== "IN_GAME") {
+      return undefined;
+    }
+
+    const speakingTotal = state.currentAttempts.length;
+    const speakingDone = state.currentAttempts.filter((attempt) => Boolean(attempt.clues)).length;
+    const internalTotal = state.currentAttempts.length;
+    const internalDone = state.currentAttempts.filter((attempt) => attempt.internalGuessSubmitted).length;
+
+    let interceptTotal = 0;
+    let interceptDone = 0;
+    for (const attempt of state.currentAttempts) {
+      const requiredForAttempt = state.teams.reduce((sum, team) => sum + (team.id === attempt.targetTeamId ? 0 : team.players.length), 0);
+      interceptTotal += requiredForAttempt;
+      interceptDone += attempt.interceptPlayerIdsSubmitted.length;
+    }
+
+    const overallTotal = speakingTotal + internalTotal + interceptTotal;
+    const overallDone = speakingDone + internalDone + interceptDone;
+
+    return {
+      overallDone,
+      overallTotal,
+      speakingDone,
+      speakingTotal,
+      internalDone,
+      internalTotal,
+      interceptDone,
+      interceptTotal
+    };
+  }, [state]);
+  const progressPercent = (done: number, total: number): number => {
+    if (total <= 0) {
+      return 0;
+    }
+    return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
+  };
 
   const hasNickname = nickname.trim().length > 0;
 
@@ -339,6 +377,66 @@ export default function Page() {
             <p className="muted" style={{ margin: "8px 0 0" }}>
               {taskSummary}
             </p>
+            {roundProgress && (
+              <div className="progress-block">
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <span className="muted">本轮总进度</span>
+                  <span className="muted">
+                    {roundProgress.overallDone}/{roundProgress.overallTotal}
+                  </span>
+                </div>
+                <div className="progress-track">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${progressPercent(roundProgress.overallDone, roundProgress.overallTotal)}%` }}
+                  />
+                </div>
+                <div className="progress-grid">
+                  <div className="progress-item">
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <span className="muted">发言</span>
+                      <span className="muted">
+                        {roundProgress.speakingDone}/{roundProgress.speakingTotal}
+                      </span>
+                    </div>
+                    <div className="progress-track mini">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${progressPercent(roundProgress.speakingDone, roundProgress.speakingTotal)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="progress-item">
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <span className="muted">内猜</span>
+                      <span className="muted">
+                        {roundProgress.internalDone}/{roundProgress.internalTotal}
+                      </span>
+                    </div>
+                    <div className="progress-track mini">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${progressPercent(roundProgress.internalDone, roundProgress.internalTotal)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="progress-item">
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <span className="muted">截获</span>
+                      <span className="muted">
+                        {roundProgress.interceptDone}/{roundProgress.interceptTotal}
+                      </span>
+                    </div>
+                    <div className="progress-track mini">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${progressPercent(roundProgress.interceptDone, roundProgress.interceptTotal)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             {myTeam && <p className="muted" style={{ margin: "8px 0 0" }}>胜利进度：{myTeam.score} / 2 分</p>}
             {winnerLabels.length > 0 && <p>胜者：{winnerLabels.join("、")}</p>}
             {state.status === "LOBBY" && (
