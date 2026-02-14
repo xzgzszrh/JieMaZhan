@@ -1,72 +1,84 @@
-# 猜词截码战 - 项目草稿（v0）
+# 猜词截码战 - 项目交接草稿（v1）
 
 ## 1. 目标与范围
-- 目标：基于现有项目，落地你描述的“按顺序描述三词、组内猜顺序、其他组截获猜顺序、先到2分获胜”的多人实时游戏。
-- 当前状态：项目已具备房间、队伍分配、实时同步、发言阶段、猜测阶段、计分与胜负判定等基础结构，可在此基础上调整规则细节。
+- 目标：实现多人在线猜词截码战，规则为“按顺序描述三词、组内猜顺序、他组截获、统一积分、先到 2 分获胜（支持并列）”。
+- 范围：`apps/server`（Express + Socket.io）与 `apps/web`（Next.js App Router）。
 
-## 2. 规则记录（按你本次描述）
-- 玩家分组：每组 2 人。
-- 每组词语：每组固定 4 个词（编号 1/2/3/4）。
-- 每轮编码：发言者抽到 3 个编号顺序（示例：`3,4,1`），队友不知道该顺序。
-- 发言任务：发言者必须按抽到顺序依次描述这 3 个词。
-- 组内目标：队友需要猜出这 3 个编号的正确顺序。
-- 公共信息：发言内容对所有组公开。
-- 截获机制：其他组可猜该组本轮编号顺序，猜对则该“猜对的组”+1 分。
-- 失误惩罚：若本组队友没猜对自己组顺序，则“所有其他组”各 +1 分。
-- 胜利条件：先获得 2 分的组获胜。
+## 2. 已确认规则（最终）
+- 每组 2 人，每组 4 个词（编号 1/2/3/4）。
+- 每轮发言者拿到 3 位不重复编号（从 1-4 抽 3 个），并按顺序描述。
+- 本组猜对：本组不加分。
+- 其他组猜对该组顺序：猜中组 +1 分。
+- 本组猜错：其他所有组各 +1 分。
+- 达到 2 分即获胜；若同轮多队达标，则并列胜利。
+- 发言顺序沿用现有轮转顺序。
 
-## 3. 现有代码结构梳理
-- Monorepo
-  - 根目录：`package.json`（workspace）
-  - 服务端：`apps/server`
-  - 前端：`apps/web`
-- 服务端核心
-  - 入口与 Socket 事件：`apps/server/src/index.ts`
-  - 游戏状态与流程：`apps/server/src/core/game-service.ts`
-  - 输入校验：`apps/server/src/core/schemas.ts`
-  - 词库：`apps/server/src/core/word-bank.ts`
+## 3. 当前实现状态（已落地）
+- 游戏核心
+  - 统一积分字段：`Team.score`（已启用）。
+  - 回合结算使用新规则（截获加分 + 内猜错误全员加分）。
+  - 胜负判定：`score >= 2`；并列胜利通过 `winnerTeamIds` 表示。
+  - 历史记录新增 `scoreDeltas`，记录本轮“谁因何加分”。
+- 房间能力
+  - 房间创建后命名为 `XXX的房间`（`XXX` 为房主昵称）。
+  - 大厅支持可加入房间列表（无需手输房间号）。
+  - 支持实时房间列表推送：`rooms:update`。
+  - 房主可解散房间；成员可在 `LOBBY` 阶段退出房间。
+- 前端展示
+  - 队伍状态已统一为“积分”术语。
+  - 对局结束支持显示并列胜者。
+  - 房间内显示房间名称与房间号。
+  - 记录区显示本轮加分摘要。
+
+## 4. 关键链路（交接必读）
+- 创建房间
+  - `room:create` -> 返回 `roomId/playerId`
+  - 服务端生成 `roomName: ${nickname}的房间`
+  - 广播 `rooms:update`
+- 加入房间
+  - 客户端先 `room:list` 或被动接收 `rooms:update`
+  - 用户选择某房间后一键 `room:join`
+- 房间内实时同步
+  - 服务端按玩家投影视图推送 `state:update`
+  - 仅当前 speaker 可见当轮编码
+- 退出/解散
+  - 成员：`room:leave`（仅 LOBBY）
+  - 房主：`room:disband`（任意阶段）
+  - 服务端会发 `session:cleared`，客户端收到后清空本地身份并回到大厅态
+
+## 5. 当前 Socket 事件
+- Client -> Server
+  - `room:list`
+  - `room:create`
+  - `room:join`
+  - `room:reconnect`
+  - `room:leave`
+  - `room:disband`
+  - `game:start`
+  - `speaker:submit`
+  - `guess:submit`
+  - `ai:action`
+- Server -> Client
+  - `rooms:update`
+  - `state:update`
+  - `session:cleared`
+
+## 6. 代码结构定位
+- 服务端
+  - 事件入口：`apps/server/src/index.ts`
+  - 业务核心：`apps/server/src/core/game-service.ts`
+  - 参数校验：`apps/server/src/core/schemas.ts`
   - 类型定义：`apps/server/src/types/game.ts`
-- 前端核心
-  - 主页面：`apps/web/src/app/page.tsx`
-  - Socket hook：`apps/web/src/hooks/useGameSocket.ts`
-  - 连接层：`apps/web/src/lib/socket.ts`
-  - 前端类型：`apps/web/src/types/game.ts`
+- 前端
+  - 页面：`apps/web/src/app/page.tsx`
+  - socket 封装：`apps/web/src/hooks/useGameSocket.ts`
+  - 视图类型：`apps/web/src/types/game.ts`
 
-## 4. 当前实现与目标规则对照
-- 已符合的部分
-  - 每队两人、每队四词、每轮随机三位且不重复编码。
-  - 发言仅当前 speaker 可见编码，且有发言/猜测阶段切换。
-  - 线索全局可见，所有队伍可提交猜测。
-  - 有记录区（按 1/2/3/4 列记录线索）与历史回放。
-- 需要调整的部分
-  - 计分语义不同：当前实现是 `raspberry`（截获）和 `bomb`（自家猜错）两条并行胜负线，需要改为统一“积分”体系。
-  - 当前自家猜错是“自己吃炸弹”；目标规则改为“所有其他组各 +1 分”。
-  - 当前胜利阈值与队伍数相关；目标规则改为固定“达到 2 分即获胜”。
-  - 需要支持同轮多队同时达标时的“并列胜利”。
+## 7. 已知限制与风险
+- `leaveRoom` 目前仅允许 `LOBBY` 阶段，开局后成员主动退出会被拒绝。
+- 已完成旧字段清理：`bombs/raspberries/eliminated/winnerTeamId` 已从 server/web 类型与协议中移除，统一使用 `score/winnerTeamIds`。
 
-## 5. 代码风格观察（现状）
-- 语言/框架
-  - TypeScript 全面启用 `strict`（前后端均开启）。
-  - 服务端使用 ESM（`type: module`）+ Express + Socket.io。
-  - 前端使用 Next.js App Router + React 19。
-- 编码习惯
-  - 双引号、分号、`const` 优先。
-  - 类型显式，领域模型集中在 `types/game.ts`。
-  - 通过 Zod 做 Socket payload 校验。
-  - 前端状态由 `useGameSocket` 统一封装，页面组件以渲染为主。
-
-## 6. 下一步实现建议（草稿）
-- 第一步：在 `GameRoom/Team` 中引入统一 `score` 字段，明确“加分来源”。
-- 第二步：重写结算逻辑（`resolveAttempt`）：
-  - 其他组猜中：猜中组 `score += 1`。
-  - 本组猜错：除目标组外所有组 `score += 1`。
-- 第三步：统一胜利判定为 `score >= 2`，并支持并列胜利。
-- 第四步：同步前端显示（把“树莓/炸弹”改成“积分”或保留辅助统计）。
-- 第五步：补充记录区与历史字段，确保可回溯“谁因何加分”。
-
-## 7. 已确认规则
-- 本队猜对自己顺序：不给本队加分。
-- 本队猜错自己顺序：其他所有队各 +1 分。
-- 若同一轮有多个队达到 2 分：并列胜利。
-- 术语统一改为“积分”。
-- 编码保持“每轮三位互不重复（从 1-4 抽 3 个）”。
+## 8. 建议下一步（交接后）
+- 决策并实现“对局中成员退出”规则（托管、判负、替补或重连窗口）。
+- 补充一次协议变更记录（字段移除说明 + 客户端兼容策略），便于后续多人并行开发。
+- 补充端到端用例（4/6/8 人、并列胜利、解散与退出链路）。

@@ -33,8 +33,7 @@ export default function Page() {
     if (!state) {
       return [];
     }
-    const winnerIds = state.winnerTeamIds?.length ? state.winnerTeamIds : state.winnerTeamId ? [state.winnerTeamId] : [];
-    return winnerIds.map((id) => state.teams.find((t) => t.id === id)?.label ?? id);
+    return (state.winnerTeamIds ?? []).map((id) => state.teams.find((t) => t.id === id)?.label ?? id);
   }, [state]);
   const isSpeaker = Boolean(state?.currentAttempt && state.me.id === state.currentAttempt.speakerPlayerId);
   const isHost = Boolean(state?.me.isHost);

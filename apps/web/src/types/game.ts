@@ -2,9 +2,6 @@ export type TeamView = {
   id: string;
   label: string;
   score: number;
-  bombs: number;
-  raspberries: number;
-  eliminated: boolean;
   players: Array<{ id: string; nickname: string; online: boolean }>;
   secretWords?: Array<{ index: 1 | 2 | 3 | 4; zh: string; en: string }>;
 };
@@ -46,6 +43,5 @@ export type GameView = {
       reason: "INTERCEPT_CORRECT" | "INTERNAL_MISS";
     }>;
   }>;
-  winnerTeamId?: string;
   winnerTeamIds?: string[];
 };

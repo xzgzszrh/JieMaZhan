@@ -25,9 +25,6 @@ export type Team = {
   playerIds: PlayerId[];
   secretWords: SecretWordSlot[];
   score: number;
-  bombs: number;
-  raspberries: number;
-  eliminated: boolean;
 };
 
 export type Attempt = {
@@ -65,7 +62,6 @@ export type GameRoom = {
   phase?: RoundPhase;
   round: number;
   activeTeamTurn: number;
-  winnerTeamId?: TeamId;
   winnerTeamIds?: TeamId[];
   players: Record<PlayerId, Player>;
   teams: Record<TeamId, Team>;

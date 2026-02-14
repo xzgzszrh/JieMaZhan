@@ -172,10 +172,7 @@ export class GameService {
         label: `Team ${String.fromCharCode(65 + i)}`,
         playerIds: [],
         secretWords: pickSecretWords(i + Math.floor(Math.random() * 100)),
-        score: 0,
-        bombs: 0,
-        raspberries: 0,
-        eliminated: false
+        score: 0
       };
     }
 
@@ -276,9 +273,6 @@ export class GameService {
         id: team.id,
         label: team.label,
         score: team.score,
-        bombs: team.bombs,
-        raspberries: team.raspberries,
-        eliminated: team.eliminated,
         players: team.playerIds.map((pid) => {
           const p = room.players[pid];
           return {
@@ -332,7 +326,6 @@ export class GameService {
         interceptGuesses: attempt.interceptGuesses,
         scoreDeltas: attempt.scoreDeltas
       })),
-      winnerTeamId: room.winnerTeamId,
       winnerTeamIds: room.winnerTeamIds
     };
   }
@@ -369,16 +362,15 @@ export class GameService {
       return;
     }
 
-    const activeTeams = room.teamOrder.filter((id) => !room.teams[id].eliminated);
-    if (activeTeams.length < 2) {
+    const teamCount = room.teamOrder.length;
+    if (teamCount < 2) {
       room.status = "FINISHED";
-      room.winnerTeamId = activeTeams[0];
-      room.winnerTeamIds = activeTeams[0] ? [activeTeams[0]] : [];
+      room.winnerTeamIds = teamCount === 1 ? [room.teamOrder[0]] : [];
       return;
     }
 
-    const activeIndex = room.activeTeamTurn % activeTeams.length;
-    const targetTeamId = activeTeams[activeIndex];
+    const activeIndex = room.activeTeamTurn % teamCount;
+    const targetTeamId = room.teamOrder[activeIndex];
     const targetTeam = requireTeam(room, targetTeamId);
     const speakerIdx = (room.round - 1) % 2;
     const speakerPlayerId = targetTeam.playerIds[speakerIdx] ?? targetTeam.playerIds[0];
@@ -425,8 +417,7 @@ export class GameService {
     if (!attempt.clues) {
       return false;
     }
-    const activeTeams = room.teamOrder.filter((id) => !room.teams[id].eliminated);
-    const interceptTeams = activeTeams.filter((id) => id !== attempt.targetTeamId);
+    const interceptTeams = room.teamOrder.filter((id) => id !== attempt.targetTeamId);
     const hasInternal = Boolean(attempt.internalGuess);
     const interceptDone = interceptTeams.every((teamId) => Boolean(attempt.interceptGuesses[teamId]));
     return hasInternal && interceptDone;
@@ -446,7 +437,7 @@ export class GameService {
         continue;
       }
       const team = room.teams[teamId];
-      if (!team || team.eliminated) {
+      if (!team) {
         continue;
       }
       team.score += 1;
@@ -463,7 +454,7 @@ export class GameService {
           continue;
         }
         const team = room.teams[teamId];
-        if (team.eliminated) {
+        if (!team) {
           continue;
         }
         team.score += 1;
@@ -486,10 +477,9 @@ export class GameService {
       return;
     }
 
-    const activeTeams = room.teamOrder.filter((id) => !room.teams[id].eliminated);
-    const previousActiveIdx = activeTeams.findIndex((teamId) => teamId === attempt.targetTeamId);
-    let nextIdx = previousActiveIdx + 1;
-    if (nextIdx >= activeTeams.length) {
+    const previousTeamIdx = room.teamOrder.findIndex((teamId) => teamId === attempt.targetTeamId);
+    let nextIdx = previousTeamIdx + 1;
+    if (nextIdx >= room.teamOrder.length) {
       nextIdx = 0;
       room.round += 1;
     }
@@ -501,12 +491,10 @@ export class GameService {
   private updateWinner(room: GameRoom): boolean {
     const winners = room.teamOrder.filter((teamId) => room.teams[teamId].score >= 2);
     if (winners.length === 0) {
-      room.winnerTeamId = undefined;
       room.winnerTeamIds = undefined;
       return false;
     }
 
-    room.winnerTeamId = winners[0];
     room.winnerTeamIds = winners;
     return true;
   }
