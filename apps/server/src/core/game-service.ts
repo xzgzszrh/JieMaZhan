@@ -380,22 +380,41 @@ export class GameService {
       return;
     }
     attempt.resolved = true;
+    attempt.scoreDeltas = [];
 
-    const targetTeam = requireTeam(room, attempt.targetTeamId);
-
-    if (!equalCode(attempt.code, attempt.internalGuess)) {
-      targetTeam.bombs += 1;
-      if (targetTeam.bombs >= 2) {
-        targetTeam.eliminated = true;
-      }
-    }
+    const isInternalCorrect = equalCode(attempt.code, attempt.internalGuess);
 
     for (const [teamId, guess] of Object.entries(attempt.interceptGuesses)) {
-      if (!guess) {
+      if (!guess || !equalCode(attempt.code, guess)) {
         continue;
       }
-      if (equalCode(attempt.code, guess)) {
-        room.teams[teamId].raspberries += 1;
+      const team = room.teams[teamId];
+      if (!team || team.eliminated) {
+        continue;
+      }
+      team.score += 1;
+      attempt.scoreDeltas.push({
+        teamId,
+        points: 1,
+        reason: "INTERCEPT_CORRECT"
+      });
+    }
+
+    if (!isInternalCorrect) {
+      for (const teamId of room.teamOrder) {
+        if (teamId === attempt.targetTeamId) {
+          continue;
+        }
+        const team = room.teams[teamId];
+        if (team.eliminated) {
+          continue;
+        }
+        team.score += 1;
+        attempt.scoreDeltas.push({
+          teamId,
+          points: 1,
+          reason: "INTERNAL_MISS"
+        });
       }
     }
 
