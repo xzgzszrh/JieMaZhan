@@ -1,6 +1,7 @@
 export type TeamView = {
   id: string;
   label: string;
+  score: number;
   bombs: number;
   raspberries: number;
   eliminated: boolean;
@@ -38,6 +39,12 @@ export type GameView = {
     code: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
     internalGuess?: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
     interceptGuesses: Record<string, [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>;
+    scoreDeltas: Array<{
+      teamId: string;
+      points: number;
+      reason: "INTERCEPT_CORRECT" | "INTERNAL_MISS";
+    }>;
   }>;
   winnerTeamId?: string;
+  winnerTeamIds?: string[];
 };
