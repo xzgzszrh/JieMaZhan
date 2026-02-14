@@ -8,6 +8,7 @@ import {
   createRoomSchema,
   joinRoomSchema,
   reconnectSchema,
+  roomActionSchema,
   startGameSchema,
   submitCluesSchema,
   submitGuessSchema
@@ -104,6 +105,35 @@ io.on("connection", (socket) => {
       socket.join(room.id);
       ack?.({ ok: true });
       broadcastRoom(room.id);
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  socket.on("room:leave", (payload, ack) => {
+    try {
+      const parsed = roomActionSchema.parse(payload);
+      const result = gameService.leaveRoom(parsed.roomId.toUpperCase(), parsed.playerId);
+      socket.leave(result.roomId);
+      ack?.({ ok: true });
+      io.to(socket.id).emit("session:cleared", { reason: "LEFT_ROOM" });
+      broadcastRoom(result.roomId);
+      broadcastJoinableRooms();
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  socket.on("room:disband", (payload, ack) => {
+    try {
+      const parsed = roomActionSchema.parse(payload);
+      const result = gameService.disbandRoom(parsed.roomId.toUpperCase(), parsed.playerId);
+      for (const socketId of result.affectedSocketIds) {
+        io.to(socketId).emit("session:cleared", { reason: "ROOM_DISBANDED" });
+        io.sockets.sockets.get(socketId)?.leave(result.roomId);
+      }
+      ack?.({ ok: true });
+      broadcastJoinableRooms();
     } catch (error) {
       ack?.({ ok: false, error: (error as Error).message });
     }

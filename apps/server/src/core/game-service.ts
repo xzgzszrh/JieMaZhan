@@ -104,6 +104,40 @@ export class GameService {
     return { room, player };
   }
 
+  leaveRoom(roomId: string, playerId: string): { roomId: string } {
+    const room = this.getRoomOrThrow(roomId);
+    if (room.status !== "LOBBY") {
+      throw new Error("Cannot leave after game start");
+    }
+    if (room.hostPlayerId === playerId) {
+      throw new Error("Host must disband room");
+    }
+    const player = room.players[playerId];
+    if (!player) {
+      throw new Error("Player not found");
+    }
+
+    delete room.players[playerId];
+    this.notifyRoomChanged(room.id);
+    return { roomId: room.id };
+  }
+
+  disbandRoom(roomId: string, callerPlayerId: string): { roomId: string; affectedSocketIds: string[] } {
+    const room = this.getRoomOrThrow(roomId);
+    if (room.hostPlayerId !== callerPlayerId) {
+      throw new Error("Only host can disband room");
+    }
+
+    this.clearSpeakingTimer(room);
+    const affectedSocketIds = Object.values(room.players)
+      .map((player) => player.socketId)
+      .filter((socketId) => Boolean(socketId));
+
+    this.rooms.delete(room.id);
+    this.notifyRoomChanged(room.id);
+    return { roomId: room.id, affectedSocketIds };
+  }
+
   reconnectPlayer(roomId: string, playerId: string, socketId: string): GameRoom {
     const room = this.getRoomOrThrow(roomId);
     const player = room.players[playerId];
@@ -283,7 +317,8 @@ export class GameService {
       me: {
         id: me.id,
         nickname: me.nickname,
-        teamId: me.teamId
+        teamId: me.teamId,
+        isHost: me.id === room.hostPlayerId
       },
       teams,
       currentAttempt,

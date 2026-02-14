@@ -15,7 +15,7 @@ export type GameView = {
   status: "LOBBY" | "IN_GAME" | "FINISHED";
   phase?: "SPEAKING" | "GUESSING";
   round: number;
-  me: { id: string; nickname: string; teamId?: string };
+  me: { id: string; nickname: string; teamId?: string; isHost: boolean };
   teams: TeamView[];
   currentAttempt?: {
     id: string;

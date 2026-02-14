@@ -6,8 +6,21 @@ import { useGameSocket } from "@/hooks/useGameSocket";
 const DIGITS = [1, 2, 3, 4] as const;
 
 export default function Page() {
-  const { state, availableRooms, error, identity, debugMultiPlayer, createRoom, joinRoom, startGame, submitClues, submitGuess, aiAction, refreshJoinableRooms } =
-    useGameSocket();
+  const {
+    state,
+    availableRooms,
+    error,
+    debugMultiPlayer,
+    createRoom,
+    joinRoom,
+    startGame,
+    leaveRoom,
+    disbandRoom,
+    submitClues,
+    submitGuess,
+    aiAction,
+    refreshJoinableRooms
+  } = useGameSocket();
   const [nickname, setNickname] = useState("");
   const [playerCount, setPlayerCount] = useState<4 | 6 | 8>(4);
   const [clues, setClues] = useState<[string, string, string]>(["", "", ""]);
@@ -24,6 +37,7 @@ export default function Page() {
     return winnerIds.map((id) => state.teams.find((t) => t.id === id)?.label ?? id);
   }, [state]);
   const isSpeaker = Boolean(state?.currentAttempt && state.me.id === state.currentAttempt.speakerPlayerId);
+  const isHost = Boolean(state?.me.isHost);
   const canSubmitClues = state?.status === "IN_GAME" && state.phase === "SPEAKING" && isSpeaker;
   const canGuess = state?.status === "IN_GAME" && state.phase === "GUESSING" && Boolean(state.currentAttempt?.clues);
 
@@ -160,10 +174,39 @@ export default function Page() {
               {state.status === "LOBBY" ? "等待房主开始" : state.status === "IN_GAME" ? `${state.phase === "SPEAKING" ? "发言阶段" : "猜测阶段"}` : "对局结束"}
             </p>
             {winnerLabels.length > 0 && <p>胜者：{winnerLabels.join("、")}</p>}
-            {state.status === "LOBBY" && state.me.id === identity?.playerId && (
-              <button className="btn" style={{ marginTop: 10 }} onClick={() => startGame()}>
-                开始游戏
-              </button>
+            {state.status === "LOBBY" && (
+              <div className="row" style={{ marginTop: 10 }}>
+                {isHost ? (
+                  <>
+                    <button className="btn" onClick={() => startGame()}>
+                      开始游戏
+                    </button>
+                    <button
+                      className="btn secondary"
+                      onClick={async () => {
+                        if (!window.confirm("确定解散房间吗？")) {
+                          return;
+                        }
+                        await disbandRoom();
+                      }}
+                    >
+                      解散房间
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="btn secondary"
+                    onClick={async () => {
+                      if (!window.confirm("确定退出房间吗？")) {
+                        return;
+                      }
+                      await leaveRoom();
+                    }}
+                  >
+                    退出房间
+                  </button>
+                )}
+              </div>
             )}
           </section>
 

@@ -38,6 +38,11 @@ export const useGameSocket = () => {
     return debugMultiPlayer ? window.sessionStorage : window.localStorage;
   }, [debugMultiPlayer]);
   const identityStorageKey = debugMultiPlayer ? "decrypto_identity_debug" : "decrypto_identity";
+  const clearSession = () => {
+    setState(null);
+    setIdentity(null);
+    identityStorage?.removeItem(identityStorageKey);
+  };
 
   useEffect(() => {
     if (!identityStorage) {
@@ -55,12 +60,15 @@ export const useGameSocket = () => {
 
     const onUpdate = (nextState: GameView) => setState(nextState);
     const onRoomsUpdate = (rooms: JoinableRoom[]) => setAvailableRooms(rooms);
+    const onSessionCleared = () => clearSession();
     socket.on("state:update", onUpdate);
     socket.on("rooms:update", onRoomsUpdate);
+    socket.on("session:cleared", onSessionCleared);
 
     return () => {
       socket.off("state:update", onUpdate);
       socket.off("rooms:update", onRoomsUpdate);
+      socket.off("session:cleared", onSessionCleared);
     };
   }, [identityStorage, identityStorageKey, socket]);
 
@@ -123,6 +131,24 @@ export const useGameSocket = () => {
       return Promise.reject(new Error("Not in room"));
     }
     return emitWithAck("game:start", identity);
+  };
+
+  const leaveRoom = async (): Promise<void> => {
+    if (!identity) {
+      throw new Error("Not in room");
+    }
+    await emitWithAck("room:leave", identity);
+    clearSession();
+    await refreshJoinableRooms();
+  };
+
+  const disbandRoom = async (): Promise<void> => {
+    if (!identity) {
+      throw new Error("Not in room");
+    }
+    await emitWithAck("room:disband", identity);
+    clearSession();
+    await refreshJoinableRooms();
   };
 
   const submitClues = (clues: [string, string, string]): Promise<void> => {
@@ -190,6 +216,8 @@ export const useGameSocket = () => {
     createRoom,
     joinRoom,
     startGame,
+    leaveRoom,
+    disbandRoom,
     submitClues,
     submitGuess,
     aiAction,
