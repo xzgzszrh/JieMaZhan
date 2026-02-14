@@ -14,17 +14,19 @@ export type GameView = {
   round: number;
   me: { id: string; nickname: string; teamId?: string; isHost: boolean };
   teams: TeamView[];
-  currentAttempt?: {
+  currentAttempts: Array<{
     id: string;
     round: number;
     targetTeamId: string;
     speakerPlayerId: string;
+    internalGuesserPlayerId: string;
     startedAt: number;
     clues: [string, string, string] | null;
     code?: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
     internalGuessSubmitted: boolean;
-    interceptTeamsSubmitted: string[];
-  };
+    internalGuessByMe: boolean;
+    interceptPlayerIdsSubmitted: string[];
+  }>;
   deductionRows: Array<{
     round: number;
     teamId: string;

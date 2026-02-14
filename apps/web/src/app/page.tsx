@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useGameSocket } from "@/hooks/useGameSocket";
 
 const DIGITS = [1, 2, 3, 4] as const;
+type GuessTuple = [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
 
 export default function Page() {
   const {
@@ -22,50 +23,185 @@ export default function Page() {
     refreshJoinableRooms
   } = useGameSocket();
   const [nickname, setNickname] = useState("");
+  const [nicknameDraft, setNicknameDraft] = useState("");
   const [playerCount, setPlayerCount] = useState<4 | 6 | 8>(4);
   const [clues, setClues] = useState<[string, string, string]>(["", "", ""]);
-  const [guess, setGuess] = useState<[1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>([1, 2, 3]);
+  const [guessByTarget, setGuessByTarget] = useState<Record<string, GuessTuple>>({});
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(60);
 
   const myTeam = useMemo(() => state?.teams.find((t) => t.id === state.me.teamId), [state]);
+  const myTeamId = state?.me.teamId;
+  const myTeamLabel = myTeam?.label ?? "未分队";
   const winnerLabels = useMemo(() => {
     if (!state) {
       return [];
     }
     return (state.winnerTeamIds ?? []).map((id) => state.teams.find((t) => t.id === id)?.label ?? id);
   }, [state]);
-  const isSpeaker = Boolean(state?.currentAttempt && state.me.id === state.currentAttempt.speakerPlayerId);
+
+  const mySpeakingAttempt = useMemo(() => {
+    if (!state) {
+      return undefined;
+    }
+    return state.currentAttempts.find((attempt) => attempt.speakerPlayerId === state.me.id);
+  }, [state]);
+
+  const myTeamAttempt = useMemo(() => {
+    if (!state || !myTeamId) {
+      return undefined;
+    }
+    return state.currentAttempts.find((attempt) => attempt.targetTeamId === myTeamId);
+  }, [state, myTeamId]);
+
   const isHost = Boolean(state?.me.isHost);
-  const canSubmitClues = state?.status === "IN_GAME" && state.phase === "SPEAKING" && isSpeaker;
-  const canGuess = state?.status === "IN_GAME" && state.phase === "GUESSING" && Boolean(state.currentAttempt?.clues);
+  const canSubmitClues = Boolean(
+    state?.status === "IN_GAME" &&
+      state.phase === "SPEAKING" &&
+      mySpeakingAttempt &&
+      !mySpeakingAttempt.clues
+  );
+
+  const guessTargets = useMemo(() => {
+    if (!state || state.status !== "IN_GAME" || state.phase !== "GUESSING" || !myTeamId) {
+      return [];
+    }
+
+    return state.currentAttempts.filter((attempt) => {
+      if (attempt.targetTeamId === myTeamId) {
+        return attempt.internalGuesserPlayerId === state.me.id;
+      }
+      return true;
+    });
+  }, [state, myTeamId]);
+
+  const getGuessForTarget = (targetTeamId: string): GuessTuple => {
+    return guessByTarget[targetTeamId] ?? [1, 2, 3];
+  };
+
+  const isTargetSubmittedByMe = (targetTeamId: string): boolean => {
+    if (!state) {
+      return false;
+    }
+    const attempt = state.currentAttempts.find((item) => item.targetTeamId === targetTeamId);
+    if (!attempt) {
+      return false;
+    }
+    if (targetTeamId === state.me.teamId) {
+      return attempt.internalGuessByMe;
+    }
+    return attempt.interceptPlayerIdsSubmitted.includes(state.me.id);
+  };
+
+  const submittedGuessCount = guessTargets.filter((attempt) => isTargetSubmittedByMe(attempt.targetTeamId)).length;
+  const phaseSummary = state
+    ? state.status === "LOBBY"
+      ? "大厅准备阶段"
+      : state.phase === "SPEAKING"
+        ? "发言阶段 · 各队同步发言"
+        : "猜测阶段 · 完成全部目标猜测"
+    : "";
+
+  const taskSummary = state
+    ? state.status === "LOBBY"
+      ? isHost
+        ? "你的任务：等待人齐后开始游戏"
+        : "你的任务：等待房主开始游戏"
+      : state.phase === "SPEAKING"
+        ? canSubmitClues
+          ? "你的任务：提交 3 条线索"
+          : myTeamAttempt && !myTeamAttempt.clues
+            ? "你的任务：等待本队 speaker 发言"
+            : "你的任务：等待其他队伍完成发言"
+        : guessTargets.length === 0
+          ? "你的任务：等待可猜测目标"
+          : submittedGuessCount >= guessTargets.length
+            ? "你的状态：已完成本轮全部猜测"
+            : `你的任务：提交猜测（${submittedGuessCount}/${guessTargets.length}）`
+    : "";
+
+  const hasNickname = nickname.trim().length > 0;
 
   useEffect(() => {
-    if (!state?.currentAttempt || state.phase !== "SPEAKING") {
+    const storage = debugMultiPlayer ? window.sessionStorage : window.localStorage;
+    const savedNickname = storage.getItem("decrypto_nickname");
+    if (savedNickname?.trim()) {
+      const trimmed = savedNickname.trim();
+      setNickname(trimmed);
+      setNicknameDraft(trimmed);
+    }
+  }, [debugMultiPlayer]);
+
+  useEffect(() => {
+    if (!state?.me.nickname) {
+      return;
+    }
+    setNickname((prev) => prev || state.me.nickname);
+    setNicknameDraft((prev) => prev || state.me.nickname);
+  }, [state?.me.nickname]);
+
+  useEffect(() => {
+    if (!state || state.phase !== "GUESSING") {
+      setGuessByTarget({});
+      return;
+    }
+
+    setGuessByTarget((prev) => {
+      const next: Record<string, GuessTuple> = {};
+      for (const attempt of state.currentAttempts) {
+        next[attempt.targetTeamId] = prev[attempt.targetTeamId] ?? [1, 2, 3];
+      }
+      return next;
+    });
+  }, [state?.phase, state?.round, state?.currentAttempts]);
+
+  useEffect(() => {
+    if (!state || state.phase !== "SPEAKING" || !mySpeakingAttempt) {
       setSecondsLeft(60);
       return;
     }
+
     const timer = window.setInterval(() => {
-      const delta = Date.now() - state.currentAttempt!.startedAt;
+      const delta = Date.now() - mySpeakingAttempt.startedAt;
       const left = Math.max(0, 60 - Math.floor(delta / 1000));
       setSecondsLeft(left);
     }, 500);
+
     return () => window.clearInterval(timer);
-  }, [state?.currentAttempt, state?.phase]);
+  }, [state, mySpeakingAttempt]);
 
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
-    if (!nickname.trim()) {
+    if (!hasNickname) {
       return;
     }
-    await createRoom(nickname.trim(), playerCount);
+    await createRoom(nickname, playerCount);
   };
 
   const handleJoinRoom = async (targetRoomId: string) => {
-    if (!nickname.trim()) {
+    if (!hasNickname) {
       return;
     }
-    await joinRoom(nickname.trim(), targetRoomId.toUpperCase());
+    await joinRoom(nickname, targetRoomId.toUpperCase());
+  };
+
+  const handleConfirmNickname = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = nicknameDraft.trim();
+    if (!trimmed) {
+      return;
+    }
+    setNickname(trimmed);
+    setNicknameDraft(trimmed);
+    const storage = debugMultiPlayer ? window.sessionStorage : window.localStorage;
+    storage.setItem("decrypto_nickname", trimmed);
+  };
+
+  const resetNickname = () => {
+    setNickname("");
+    setNicknameDraft("");
+    const storage = debugMultiPlayer ? window.sessionStorage : window.localStorage;
+    storage.removeItem("decrypto_nickname");
   };
 
   const fillByAI = async () => {
@@ -76,14 +212,12 @@ export default function Page() {
     setClues(aiClues);
   };
 
-  const submitMyGuess = async () => {
-    if (!state?.currentAttempt) {
-      return;
-    }
+  const submitMyGuess = async (targetTeamId: string) => {
+    const guess = getGuessForTarget(targetTeamId);
     if (new Set(guess).size !== 3) {
       return;
     }
-    await submitGuess(state.currentAttempt.targetTeamId, guess);
+    await submitGuess(targetTeamId, guess);
   };
 
   const toggleDebugMode = () => {
@@ -107,55 +241,88 @@ export default function Page() {
           {debugMultiPlayer ? "关闭调试" : "开启调试"}
         </button>
       </div>
-      <p className="muted">Decrypto Online</p>
-      <h1 className="big-title">截码战</h1>
-      <p className="muted">移动端优先 · 极简黑白 · 实时对局</p>
+
+      {!state && (
+        <>
+          <p className="muted">Decrypto Online</p>
+          <h1 className="big-title">截码战</h1>
+          <p className="muted">移动端优先 · 极简黑白 · 实时对局</p>
+        </>
+      )}
 
       {!state && (
         <>
           <section className="card" style={{ marginTop: 12 }}>
-            <h2 className="title">创建房间</h2>
-            <form onSubmit={handleCreate}>
-              <div className="row wrap">
-                <input className="input" placeholder="你的昵称" value={nickname} onChange={(e) => setNickname(e.target.value)} />
-                <select className="select" value={playerCount} onChange={(e) => setPlayerCount(Number(e.target.value) as 4 | 6 | 8)}>
-                  <option value={4}>4人 / 2队</option>
-                  <option value={6}>6人 / 3队</option>
-                  <option value={8}>8人 / 4队</option>
-                </select>
-                <button type="submit" className="btn">
-                  创建
+            <h2 className="title">设定昵称</h2>
+            {!hasNickname ? (
+              <form onSubmit={handleConfirmNickname}>
+                <div className="row wrap">
+                  <input
+                    className="input"
+                    placeholder="你的昵称"
+                    value={nicknameDraft}
+                    onChange={(e) => setNicknameDraft(e.target.value)}
+                  />
+                  <button type="submit" className="btn">
+                    确认昵称
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <p className="muted" style={{ margin: 0 }}>
+                  当前昵称：{nickname}
+                </p>
+                <button className="btn secondary" style={{ width: "auto", minHeight: 34 }} onClick={resetNickname}>
+                  修改昵称
                 </button>
               </div>
-            </form>
+            )}
           </section>
 
-          <section className="card" style={{ marginTop: 10 }}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <h2 className="title">可用房间</h2>
-              <button className="btn secondary" style={{ width: "auto", minHeight: 34 }} onClick={() => refreshJoinableRooms()}>
-                刷新
-              </button>
-            </div>
-            <div className="row wrap" style={{ marginBottom: 10 }}>
-              <input className="input" placeholder="你的昵称（加入房间时使用）" value={nickname} onChange={(e) => setNickname(e.target.value)} />
-            </div>
+          {hasNickname && (
+            <>
+              <section className="card" style={{ marginTop: 12 }}>
+                <h2 className="title">创建房间</h2>
+                <form onSubmit={handleCreate}>
+                  <div className="row wrap">
+                    <select className="select" value={playerCount} onChange={(e) => setPlayerCount(Number(e.target.value) as 4 | 6 | 8)}>
+                      <option value={4}>4人 / 2队</option>
+                      <option value={6}>6人 / 3队</option>
+                      <option value={8}>8人 / 4队</option>
+                    </select>
+                    <button type="submit" className="btn">
+                      创建
+                    </button>
+                  </div>
+                </form>
+              </section>
 
-            {availableRooms.length === 0 && <p className="muted">当前没有可加入的房间。</p>}
-            {availableRooms.map((room) => (
-              <div key={room.roomId} style={{ borderTop: "1px solid #2a2a2a", paddingTop: 8, marginTop: 8 }}>
-                <p style={{ margin: "0 0 6px" }}>
-                  <strong>{room.roomName}</strong>
-                </p>
-                <p className="muted" style={{ margin: "0 0 8px" }}>
-                  房间号 #{room.roomId} · 房主 {room.hostNickname} · 人数 {room.currentPlayerCount}/{room.targetPlayerCount}
-                </p>
-                <button className="btn secondary" onClick={() => handleJoinRoom(room.roomId)}>
-                  加入该房间
-                </button>
-              </div>
-            ))}
-          </section>
+              <section className="card" style={{ marginTop: 10 }}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <h2 className="title">可用房间</h2>
+                  <button className="btn secondary" style={{ width: "auto", minHeight: 34 }} onClick={() => refreshJoinableRooms()}>
+                    刷新
+                  </button>
+                </div>
+
+                {availableRooms.length === 0 && <p className="muted">当前没有可加入的房间。</p>}
+                {availableRooms.map((room) => (
+                  <div key={room.roomId} style={{ borderTop: "1px solid #2a2a2a", paddingTop: 8, marginTop: 8 }}>
+                    <p style={{ margin: "0 0 6px" }}>
+                      <strong>{room.roomName}</strong>
+                    </p>
+                    <p className="muted" style={{ margin: "0 0 8px" }}>
+                      房间号 #{room.roomId} · 房主 {room.hostNickname} · 人数 {room.currentPlayerCount}/{room.targetPlayerCount}
+                    </p>
+                    <button className="btn secondary" onClick={() => handleJoinRoom(room.roomId)}>
+                      加入该房间
+                    </button>
+                  </div>
+                ))}
+              </section>
+            </>
+          )}
         </>
       )}
 
@@ -163,15 +330,16 @@ export default function Page() {
         <>
           <section className="card" style={{ marginTop: 12 }}>
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <strong>{state.roomName}</strong>
+              <strong>你在 {myTeamLabel}</strong>
               <span className="badge">Round {state.round}</span>
             </div>
             <p className="muted" style={{ margin: "6px 0 0" }}>
-              房间号 #{state.roomId}
+              {phaseSummary}
             </p>
             <p className="muted" style={{ margin: "8px 0 0" }}>
-              {state.status === "LOBBY" ? "等待房主开始" : state.status === "IN_GAME" ? `${state.phase === "SPEAKING" ? "发言阶段" : "猜测阶段"}` : "对局结束"}
+              {taskSummary}
             </p>
+            {myTeam && <p className="muted" style={{ margin: "8px 0 0" }}>胜利进度：{myTeam.score} / 2 分</p>}
             {winnerLabels.length > 0 && <p>胜者：{winnerLabels.join("、")}</p>}
             {state.status === "LOBBY" && (
               <div className="row" style={{ marginTop: 10 }}>
@@ -235,11 +403,11 @@ export default function Page() {
             ))}
           </section>
 
-          {canSubmitClues && state.currentAttempt && (
+          {canSubmitClues && mySpeakingAttempt && (
             <section className="card" style={{ marginTop: 10 }}>
               <h2 className="title">发言面板</h2>
               <p className="muted" style={{ marginTop: 0 }}>
-                当前编码：{state.currentAttempt.code?.join("-")} · 剩余 {secondsLeft}s
+                当前编码：{mySpeakingAttempt.code?.join("-")} · 剩余 {secondsLeft}s
               </p>
               <div className="grid-3">
                 {clues.map((item, idx) => (
@@ -268,36 +436,51 @@ export default function Page() {
             </section>
           )}
 
-          {canGuess && state.currentAttempt && (
+          {state.status === "IN_GAME" && state.phase === "GUESSING" && (
             <section className="card" style={{ marginTop: 10 }}>
               <h2 className="title">猜测面板</h2>
-              <p className="muted" style={{ marginTop: 0 }}>
-                目标：{state.teams.find((t) => t.id === state.currentAttempt?.targetTeamId)?.label} · 线索：
-                {(state.currentAttempt.clues ?? []).join(" / ")}
-              </p>
-              <div className="grid-3">
-                {[0, 1, 2].map((idx) => (
-                  <select
-                    key={idx}
-                    className="select"
-                    value={guess[idx]}
-                    onChange={(e) => {
-                      const next = [...guess] as [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
-                      next[idx] = Number(e.target.value) as 1 | 2 | 3 | 4;
-                      setGuess(next);
-                    }}
-                  >
-                    {DIGITS.map((digit) => (
-                      <option key={digit} value={digit}>
-                        {digit}
-                      </option>
-                    ))}
-                  </select>
-                ))}
-              </div>
-              <button className="btn" style={{ marginTop: 8 }} onClick={submitMyGuess}>
-                提交猜测
-              </button>
+              {guessTargets.length === 0 && <p className="muted">本阶段暂无可提交目标。</p>}
+              {guessTargets.map((attempt) => {
+                const targetLabel = state.teams.find((team) => team.id === attempt.targetTeamId)?.label ?? attempt.targetTeamId;
+                const isInternal = attempt.targetTeamId === state.me.teamId;
+                const currentGuess = getGuessForTarget(attempt.targetTeamId);
+                const submitted = isTargetSubmittedByMe(attempt.targetTeamId);
+
+                return (
+                  <div key={attempt.targetTeamId} style={{ borderTop: "1px solid #2a2a2a", paddingTop: 10, marginTop: 10 }}>
+                    <p className="muted" style={{ marginTop: 0 }}>
+                      目标：{targetLabel} · 类型：{isInternal ? "本队内猜" : "截获猜测"} · 线索：{(attempt.clues ?? []).join(" / ")}
+                    </p>
+                    <div className="grid-3">
+                      {[0, 1, 2].map((idx) => (
+                        <select
+                          key={`${attempt.targetTeamId}-${idx}`}
+                          className="select"
+                          disabled={submitted}
+                          value={currentGuess[idx]}
+                          onChange={(e) => {
+                            const next = [...currentGuess] as GuessTuple;
+                            next[idx] = Number(e.target.value) as 1 | 2 | 3 | 4;
+                            setGuessByTarget((prev) => ({
+                              ...prev,
+                              [attempt.targetTeamId]: next
+                            }));
+                          }}
+                        >
+                          {DIGITS.map((digit) => (
+                            <option key={digit} value={digit}>
+                              {digit}
+                            </option>
+                          ))}
+                        </select>
+                      ))}
+                    </div>
+                    <button className="btn" style={{ marginTop: 8 }} disabled={submitted} onClick={() => submitMyGuess(attempt.targetTeamId)}>
+                      {submitted ? "已提交" : "提交猜测"}
+                    </button>
+                  </div>
+                );
+              })}
             </section>
           )}
 
@@ -316,7 +499,11 @@ export default function Page() {
                     {(() => {
                       const matched = state.history.find((item) => item.round === row.round && item.targetTeamId === row.teamId);
                       if (!matched || matched.scoreDeltas.length === 0) {
-                        return <p className="muted" style={{ margin: "0 0 6px" }}>本轮加分：无</p>;
+                        return (
+                          <p className="muted" style={{ margin: "0 0 6px" }}>
+                            本轮加分：无
+                          </p>
+                        );
                       }
                       const summary = matched.scoreDeltas
                         .map((delta) => {

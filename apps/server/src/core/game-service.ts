@@ -7,7 +7,6 @@ import {
   GameRoom,
   JoinableRoomSummary,
   Player,
-  RoundPhase,
   Team,
   TeamId
 } from "../types/game.js";
@@ -71,10 +70,10 @@ export class GameService {
       createdAt: Date.now(),
       status: "LOBBY",
       round: 1,
-      activeTeamTurn: 0,
       players: { [playerId]: player },
       teams: {},
       teamOrder: [],
+      currentAttempts: [],
       attemptHistory: [],
       deductionRows: [],
       timers: {}
@@ -187,33 +186,41 @@ export class GameService {
 
     room.status = "IN_GAME";
     room.round = 1;
-    room.activeTeamTurn = 0;
-    this.startAttempt(room);
+    this.startRound(room);
     this.notifyRoomChanged(room.id);
     return room;
   }
 
   submitClues(roomId: string, playerId: string, rawClues: [string, string, string]): GameRoom {
     const room = this.getRoomOrThrow(roomId);
-    if (room.status !== "IN_GAME" || room.phase !== "SPEAKING" || !room.currentAttempt) {
+    if (room.status !== "IN_GAME" || room.phase !== "SPEAKING" || room.currentAttempts.length === 0) {
       throw new Error("Not in speaking phase");
     }
-    if (room.currentAttempt.speakerPlayerId !== playerId) {
+
+    const attempt = room.currentAttempts.find((item) => item.speakerPlayerId === playerId);
+    if (!attempt) {
       throw new Error("Only current speaker can submit clues");
+    }
+    if (attempt.clues) {
+      throw new Error("Clues already submitted");
     }
 
     const clues = rawClues.map((value) => value.trim().slice(0, 10)) as [string, string, string];
-    room.currentAttempt.clues = clues;
-    room.currentAttempt.cluesSubmittedAt = Date.now();
-    this.clearSpeakingTimer(room);
-    room.phase = "GUESSING";
+    attempt.clues = clues;
+    attempt.cluesSubmittedAt = Date.now();
+
+    if (this.isSpeakingComplete(room)) {
+      this.clearSpeakingTimer(room);
+      room.phase = "GUESSING";
+    }
+
     this.notifyRoomChanged(room.id);
     return room;
   }
 
   submitGuess(roomId: string, playerId: string, targetTeamId: string, guess: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]): GameRoom {
     const room = this.getRoomOrThrow(roomId);
-    if (room.status !== "IN_GAME" || room.phase !== "GUESSING" || !room.currentAttempt) {
+    if (room.status !== "IN_GAME" || room.phase !== "GUESSING" || room.currentAttempts.length === 0) {
       throw new Error("Not in guessing phase");
     }
 
@@ -222,25 +229,30 @@ export class GameService {
       throw new Error("Player not in team");
     }
 
-    const attempt = room.currentAttempt;
-    if (attempt.targetTeamId !== targetTeamId) {
+    const attempt = room.currentAttempts.find((item) => item.targetTeamId === targetTeamId);
+    if (!attempt) {
       throw new Error("Target mismatch");
     }
 
     if (player.teamId === targetTeamId) {
+      if (attempt.internalGuesserPlayerId !== playerId) {
+        throw new Error("Only designated teammate can submit internal guess");
+      }
       if (attempt.internalGuess) {
         throw new Error("Internal guess already submitted");
       }
       attempt.internalGuess = guess;
+      attempt.internalGuessByPlayerId = playerId;
     } else {
-      if (attempt.interceptGuesses[player.teamId]) {
-        throw new Error("Intercept guess already submitted by your team");
+      if (attempt.interceptGuesses[playerId]) {
+        throw new Error("Intercept guess already submitted by you for this target");
       }
-      attempt.interceptGuesses[player.teamId] = guess;
+      attempt.interceptGuesses[playerId] = guess;
     }
 
-    if (this.isGuessingComplete(room, attempt)) {
-      this.resolveAttempt(room, attempt);
+    if (this.isGuessingComplete(room)) {
+      this.resolveRound(room);
+      return room;
     }
 
     this.notifyRoomChanged(room.id);
@@ -285,22 +297,19 @@ export class GameService {
       };
     });
 
-    const currentAttempt = room.currentAttempt
-      ? {
-          id: room.currentAttempt.id,
-          round: room.currentAttempt.round,
-          targetTeamId: room.currentAttempt.targetTeamId,
-          speakerPlayerId: room.currentAttempt.speakerPlayerId,
-          startedAt: room.currentAttempt.startedAt,
-          clues: room.currentAttempt.clues,
-          code:
-            room.currentAttempt.speakerPlayerId === playerId
-              ? room.currentAttempt.code
-              : undefined,
-          internalGuessSubmitted: Boolean(room.currentAttempt.internalGuess),
-          interceptTeamsSubmitted: Object.keys(room.currentAttempt.interceptGuesses)
-        }
-      : undefined;
+    const currentAttempts = room.currentAttempts.map((attempt) => ({
+      id: attempt.id,
+      round: attempt.round,
+      targetTeamId: attempt.targetTeamId,
+      speakerPlayerId: attempt.speakerPlayerId,
+      internalGuesserPlayerId: attempt.internalGuesserPlayerId,
+      startedAt: attempt.startedAt,
+      clues: attempt.clues,
+      code: attempt.speakerPlayerId === playerId ? attempt.code : undefined,
+      internalGuessSubmitted: Boolean(attempt.internalGuess),
+      internalGuessByMe: attempt.internalGuessByPlayerId === playerId,
+      interceptPlayerIdsSubmitted: Object.keys(attempt.interceptGuesses)
+    }));
 
     return {
       roomId: room.id,
@@ -315,7 +324,7 @@ export class GameService {
         isHost: me.id === room.hostPlayerId
       },
       teams,
-      currentAttempt,
+      currentAttempts,
       deductionRows: room.deductionRows,
       history: room.attemptHistory.map((attempt) => ({
         round: attempt.round,
@@ -357,7 +366,7 @@ export class GameService {
     return room;
   }
 
-  private startAttempt(room: GameRoom): void {
+  private startRound(room: GameRoom): void {
     if (room.status !== "IN_GAME") {
       return;
     }
@@ -369,26 +378,29 @@ export class GameService {
       return;
     }
 
-    const activeIndex = room.activeTeamTurn % teamCount;
-    const targetTeamId = room.teamOrder[activeIndex];
-    const targetTeam = requireTeam(room, targetTeamId);
     const speakerIdx = (room.round - 1) % 2;
-    const speakerPlayerId = targetTeam.playerIds[speakerIdx] ?? targetTeam.playerIds[0];
+    room.currentAttempts = room.teamOrder.map((teamId) => {
+      const targetTeam = requireTeam(room, teamId);
+      const speakerPlayerId = targetTeam.playerIds[speakerIdx] ?? targetTeam.playerIds[0];
+      const internalGuesserPlayerId = targetTeam.playerIds.find((pid) => pid !== speakerPlayerId) ?? speakerPlayerId;
 
-    const attempt: Attempt = {
-      id: randomUUID(),
-      round: room.round,
-      targetTeamId,
-      speakerPlayerId,
-      code: randomCode(),
-      clues: null,
-      interceptGuesses: {},
-      scoreDeltas: [],
-      resolved: false,
-      startedAt: Date.now()
-    };
+      const attempt: Attempt = {
+        id: randomUUID(),
+        round: room.round,
+        targetTeamId: teamId,
+        speakerPlayerId,
+        internalGuesserPlayerId,
+        code: randomCode(),
+        clues: null,
+        interceptGuesses: {},
+        scoreDeltas: [],
+        resolved: false,
+        startedAt: Date.now()
+      };
 
-    room.currentAttempt = attempt;
+      return attempt;
+    });
+
     room.phase = "SPEAKING";
     this.armSpeakingTimeout(room);
   }
@@ -403,56 +415,74 @@ export class GameService {
   private armSpeakingTimeout(room: GameRoom): void {
     this.clearSpeakingTimer(room);
     room.timers.speakingTimeout = setTimeout(() => {
-      if (room.status !== "IN_GAME" || room.phase !== "SPEAKING" || !room.currentAttempt) {
+      if (room.status !== "IN_GAME" || room.phase !== "SPEAKING" || room.currentAttempts.length === 0) {
         return;
       }
-      room.currentAttempt.clues = ["", "", ""];
-      room.currentAttempt.cluesSubmittedAt = Date.now();
+
+      for (const attempt of room.currentAttempts) {
+        if (attempt.clues) {
+          continue;
+        }
+        attempt.clues = ["", "", ""];
+        attempt.cluesSubmittedAt = Date.now();
+      }
+
       room.phase = "GUESSING";
       this.notifyRoomChanged(room.id);
     }, SPEAKING_TIMEOUT_MS);
   }
 
-  private isGuessingComplete(room: GameRoom, attempt: Attempt): boolean {
-    if (!attempt.clues) {
-      return false;
-    }
-    const interceptTeams = room.teamOrder.filter((id) => id !== attempt.targetTeamId);
-    const hasInternal = Boolean(attempt.internalGuess);
-    const interceptDone = interceptTeams.every((teamId) => Boolean(attempt.interceptGuesses[teamId]));
-    return hasInternal && interceptDone;
+  private isSpeakingComplete(room: GameRoom): boolean {
+    return room.currentAttempts.length > 0 && room.currentAttempts.every((attempt) => Boolean(attempt.clues));
   }
 
-  private resolveAttempt(room: GameRoom, attempt: Attempt): void {
-    if (attempt.resolved || !attempt.clues || !attempt.internalGuess) {
-      return;
-    }
-    attempt.resolved = true;
-    attempt.scoreDeltas = [];
-
-    const isInternalCorrect = equalCode(attempt.code, attempt.internalGuess);
-
-    for (const [teamId, guess] of Object.entries(attempt.interceptGuesses)) {
-      if (!guess || !equalCode(attempt.code, guess)) {
-        continue;
-      }
-      const team = room.teams[teamId];
-      if (!team) {
-        continue;
-      }
-      team.score += 1;
-      attempt.scoreDeltas.push({
-        teamId,
-        points: 1,
-        reason: "INTERCEPT_CORRECT"
-      });
+  private isGuessingComplete(room: GameRoom): boolean {
+    if (room.currentAttempts.length === 0) {
+      return false;
     }
 
-    if (!isInternalCorrect) {
-      for (const teamId of room.teamOrder) {
-        if (teamId === attempt.targetTeamId) {
+    for (const attempt of room.currentAttempts) {
+      if (!attempt.clues || !attempt.internalGuess) {
+        return false;
+      }
+
+      for (const player of Object.values(room.players)) {
+        if (!player.teamId || player.teamId === attempt.targetTeamId) {
           continue;
         }
+        if (!attempt.interceptGuesses[player.id]) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  private resolveRound(room: GameRoom): void {
+    for (const attempt of room.currentAttempts) {
+      if (!attempt.clues || !attempt.internalGuess) {
+        continue;
+      }
+
+      attempt.resolved = true;
+      attempt.scoreDeltas = [];
+
+      const isInternalCorrect = equalCode(attempt.code, attempt.internalGuess);
+      const interceptWinnerTeamIds = new Set<TeamId>();
+
+      for (const [playerId, guess] of Object.entries(attempt.interceptGuesses)) {
+        if (!guess || !equalCode(attempt.code, guess)) {
+          continue;
+        }
+        const teamId = room.players[playerId]?.teamId;
+        if (!teamId || teamId === attempt.targetTeamId) {
+          continue;
+        }
+        interceptWinnerTeamIds.add(teamId);
+      }
+
+      for (const teamId of interceptWinnerTeamIds) {
         const team = room.teams[teamId];
         if (!team) {
           continue;
@@ -461,14 +491,33 @@ export class GameService {
         attempt.scoreDeltas.push({
           teamId,
           points: 1,
-          reason: "INTERNAL_MISS"
+          reason: "INTERCEPT_CORRECT"
         });
       }
+
+      if (!isInternalCorrect) {
+        for (const teamId of room.teamOrder) {
+          if (teamId === attempt.targetTeamId) {
+            continue;
+          }
+          const team = room.teams[teamId];
+          if (!team) {
+            continue;
+          }
+          team.score += 1;
+          attempt.scoreDeltas.push({
+            teamId,
+            points: 1,
+            reason: "INTERNAL_MISS"
+          });
+        }
+      }
+
+      this.recordDeduction(room, attempt);
+      room.attemptHistory.push(attempt);
     }
 
-    this.recordDeduction(room, attempt);
-    room.attemptHistory.push(attempt);
-    room.currentAttempt = undefined;
+    room.currentAttempts = [];
     room.phase = undefined;
 
     if (this.updateWinner(room)) {
@@ -477,14 +526,8 @@ export class GameService {
       return;
     }
 
-    const previousTeamIdx = room.teamOrder.findIndex((teamId) => teamId === attempt.targetTeamId);
-    let nextIdx = previousTeamIdx + 1;
-    if (nextIdx >= room.teamOrder.length) {
-      nextIdx = 0;
-      room.round += 1;
-    }
-    room.activeTeamTurn = nextIdx;
-    this.startAttempt(room);
+    room.round += 1;
+    this.startRound(room);
     this.notifyRoomChanged(room.id);
   }
 
@@ -523,8 +566,8 @@ export class GameService {
 
   async handleAIAction(roomId: string, teamId: string): Promise<[string, string, string]> {
     const room = this.getRoomOrThrow(roomId);
-    const attempt = room.currentAttempt;
-    if (!attempt || attempt.targetTeamId !== teamId) {
+    const attempt = room.currentAttempts.find((item) => item.targetTeamId === teamId);
+    if (!attempt) {
       throw new Error("No active attempt for this team");
     }
 

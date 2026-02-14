@@ -32,10 +32,12 @@ export type Attempt = {
   round: number;
   targetTeamId: TeamId;
   speakerPlayerId: PlayerId;
+  internalGuesserPlayerId: PlayerId;
   code: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
   clues: [string, string, string] | null;
   internalGuess?: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
-  interceptGuesses: Partial<Record<TeamId, [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>>;
+  internalGuessByPlayerId?: PlayerId;
+  interceptGuesses: Partial<Record<PlayerId, [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>>;
   scoreDeltas: Array<{
     teamId: TeamId;
     points: number;
@@ -61,12 +63,11 @@ export type GameRoom = {
   status: GameStatus;
   phase?: RoundPhase;
   round: number;
-  activeTeamTurn: number;
   winnerTeamIds?: TeamId[];
   players: Record<PlayerId, Player>;
   teams: Record<TeamId, Team>;
   teamOrder: TeamId[];
-  currentAttempt?: Attempt;
+  currentAttempts: Attempt[];
   attemptHistory: Attempt[];
   deductionRows: DeductionRow[];
   timers: {
