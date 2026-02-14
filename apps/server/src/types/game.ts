@@ -8,7 +8,6 @@ export type FinishedReason = "NORMAL" | "DISCONNECT_TIMEOUT" | "HOST_FORCED";
 export type SecretWordSlot = {
   index: 1 | 2 | 3 | 4;
   zh: string;
-  en: string;
 };
 
 export type Player = {

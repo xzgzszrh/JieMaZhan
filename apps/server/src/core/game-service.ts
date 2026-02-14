@@ -315,8 +315,7 @@ export class GameService {
             nickname: p.nickname,
             online: Boolean(p.socketId)
           };
-        }),
-        secretWords: me.teamId === teamId ? team.secretWords : undefined
+        })
       };
     });
 
@@ -348,6 +347,7 @@ export class GameService {
         teamId: me.teamId,
         isHost: me.id === room.hostPlayerId
       },
+      mySecretWords: me.teamId ? room.teams[me.teamId]?.secretWords : undefined,
       teams,
       currentAttempts,
       deductionRows: room.deductionRows,

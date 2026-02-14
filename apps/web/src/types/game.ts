@@ -3,7 +3,6 @@ export type TeamView = {
   label: string;
   score: number;
   players: Array<{ id: string; nickname: string; online: boolean }>;
-  secretWords?: Array<{ index: 1 | 2 | 3 | 4; zh: string; en: string }>;
 };
 
 export type GameView = {
@@ -19,6 +18,7 @@ export type GameView = {
     disconnectedPlayerIds: string[];
   };
   me: { id: string; nickname: string; teamId?: string; isHost: boolean };
+  mySecretWords?: Array<{ index: 1 | 2 | 3 | 4; zh: string }>;
   teams: TeamView[];
   currentAttempts: Array<{
     id: string;

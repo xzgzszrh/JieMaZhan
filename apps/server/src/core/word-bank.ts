@@ -1,41 +1,41 @@
 import { SecretWordSlot } from "../types/game.js";
 
-const WORD_BANK: Array<Array<{ zh: string; en: string }>> = [
+const WORD_BANK: string[][] = [
   [
-    { zh: "苹果", en: "Apple" },
-    { zh: "海洋", en: "Ocean" },
-    { zh: "钟表", en: "Clock" },
-    { zh: "火山", en: "Volcano" }
+    "苹果",
+    "海洋",
+    "钟表",
+    "火山"
   ],
   [
-    { zh: "森林", en: "Forest" },
-    { zh: "飞机", en: "Airplane" },
-    { zh: "丝绸", en: "Silk" },
-    { zh: "电池", en: "Battery" }
+    "森林",
+    "飞机",
+    "丝绸",
+    "电池"
   ],
   [
-    { zh: "银河", en: "Galaxy" },
-    { zh: "画笔", en: "Brush" },
-    { zh: "地铁", en: "Subway" },
-    { zh: "茶壶", en: "Teapot" }
+    "银河",
+    "画笔",
+    "地铁",
+    "茶壶"
   ],
   [
-    { zh: "冰川", en: "Glacier" },
-    { zh: "剧院", en: "Theater" },
-    { zh: "沙漏", en: "Hourglass" },
-    { zh: "指南针", en: "Compass" }
+    "冰川",
+    "剧院",
+    "沙漏",
+    "指南针"
   ],
   [
-    { zh: "雷达", en: "Radar" },
-    { zh: "花园", en: "Garden" },
-    { zh: "隧道", en: "Tunnel" },
-    { zh: "乐谱", en: "Score" }
+    "雷达",
+    "花园",
+    "隧道",
+    "乐谱"
   ],
   [
-    { zh: "雪山", en: "Snow Mountain" },
-    { zh: "邮票", en: "Stamp" },
-    { zh: "镜子", en: "Mirror" },
-    { zh: "齿轮", en: "Gear" }
+    "雪山",
+    "邮票",
+    "镜子",
+    "齿轮"
   ]
 ];
 
@@ -43,7 +43,6 @@ export const pickSecretWords = (seed: number): SecretWordSlot[] => {
   const pack = WORD_BANK[seed % WORD_BANK.length];
   return pack.map((w, idx) => ({
     index: (idx + 1) as 1 | 2 | 3 | 4,
-    zh: w.zh,
-    en: w.en
+    zh: w
   }));
 };

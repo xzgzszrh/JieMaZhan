@@ -591,19 +591,23 @@ export default function Page() {
                 <p className="muted" style={{ margin: "5px 0" }}>
                   {team.players.map((p) => `${p.nickname}${p.online ? "" : "(离线)"}`).join(" · ")}
                 </p>
-                {team.secretWords && (
-                  <div className="secret-grid">
-                    {team.secretWords.map((word) => (
-                      <div key={word.index} className="secret-item">
-                        <span>{word.index}</span>
-                        <span>{word.zh}</span>
-                        <span className="muted">{word.en}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
+            {state.mySecretWords && (
+              <div style={{ borderTop: "1px solid #2a2a2a", paddingTop: 8, marginTop: 8 }}>
+                <p className="muted" style={{ margin: 0 }}>
+                  你的队伍词条
+                </p>
+                <div className="secret-grid">
+                  {state.mySecretWords.map((word) => (
+                    <div key={word.index} className="secret-item">
+                      <span>{word.index}</span>
+                      <span>{word.zh}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           {canSubmitClues && mySpeakingAttempt && (
