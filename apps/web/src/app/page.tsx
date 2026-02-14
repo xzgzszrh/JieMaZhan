@@ -323,7 +323,7 @@ export default function Page() {
         <>
           <p className="muted">Decrypto Online</p>
           <h1 className="big-title">截码战</h1>
-          <p className="muted">移动端优先 · 极简黑白 · 实时对局</p>
+          <p className="muted">极简黑白 · 实时对局</p>
         </>
       )}
 
