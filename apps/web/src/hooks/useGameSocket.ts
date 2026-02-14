@@ -5,21 +5,42 @@ import { getSocket } from "@/lib/socket";
 import { GameView } from "@/types/game";
 
 type Ack<T> = (response: { ok: boolean; error?: string } & T) => void;
+type Identity = { roomId: string; playerId: string };
+
+const parseDebugModeFromUrl = (): boolean => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get("debug_multi_player");
+  return value === "1" || value === "true";
+};
 
 export const useGameSocket = () => {
   const socket = useMemo(() => getSocket(), []);
   const [state, setState] = useState<GameView | null>(null);
   const [error, setError] = useState<string>("");
-  const [identity, setIdentity] = useState<{ roomId: string; playerId: string } | null>(null);
+  const [identity, setIdentity] = useState<Identity | null>(null);
+  const debugMultiPlayer = useMemo(() => parseDebugModeFromUrl(), []);
+  const identityStorage = useMemo<Storage | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+    return debugMultiPlayer ? window.sessionStorage : window.localStorage;
+  }, [debugMultiPlayer]);
+  const identityStorageKey = debugMultiPlayer ? "decrypto_identity_debug" : "decrypto_identity";
 
   useEffect(() => {
-    const identityRaw = window.localStorage.getItem("decrypto_identity");
+    if (!identityStorage) {
+      return;
+    }
+    const identityRaw = identityStorage.getItem(identityStorageKey);
     if (identityRaw) {
       try {
-        const parsed = JSON.parse(identityRaw) as { roomId: string; playerId: string };
+        const parsed = JSON.parse(identityRaw) as Identity;
         setIdentity(parsed);
       } catch {
-        window.localStorage.removeItem("decrypto_identity");
+        identityStorage.removeItem(identityStorageKey);
       }
     }
 
@@ -29,7 +50,7 @@ export const useGameSocket = () => {
     return () => {
       socket.off("state:update", onUpdate);
     };
-  }, [socket]);
+  }, [identityStorage, identityStorageKey, socket]);
 
   useEffect(() => {
     if (!identity) {
@@ -54,7 +75,7 @@ export const useGameSocket = () => {
           }
           const nextIdentity = { roomId: ack.roomId, playerId: ack.playerId };
           setIdentity(nextIdentity);
-          window.localStorage.setItem("decrypto_identity", JSON.stringify(nextIdentity));
+          identityStorage?.setItem(identityStorageKey, JSON.stringify(nextIdentity));
           resolve();
         }
       );
@@ -70,7 +91,7 @@ export const useGameSocket = () => {
         }
         const nextIdentity = { roomId: ack.roomId, playerId: ack.playerId };
         setIdentity(nextIdentity);
-        window.localStorage.setItem("decrypto_identity", JSON.stringify(nextIdentity));
+        identityStorage?.setItem(identityStorageKey, JSON.stringify(nextIdentity));
         resolve();
       });
     });
@@ -129,6 +150,7 @@ export const useGameSocket = () => {
   return {
     state,
     error,
+    debugMultiPlayer,
     identity,
     createRoom,
     joinRoom,

@@ -6,7 +6,7 @@ import { useGameSocket } from "@/hooks/useGameSocket";
 const DIGITS = [1, 2, 3, 4] as const;
 
 export default function Page() {
-  const { state, error, identity, createRoom, joinRoom, startGame, submitClues, submitGuess, aiAction } = useGameSocket();
+  const { state, error, identity, debugMultiPlayer, createRoom, joinRoom, startGame, submitClues, submitGuess, aiAction } = useGameSocket();
   const [nickname, setNickname] = useState("");
   const [roomId, setRoomId] = useState("");
   const [playerCount, setPlayerCount] = useState<4 | 6 | 8>(4);
@@ -67,8 +67,27 @@ export default function Page() {
     await submitGuess(state.currentAttempt.targetTeamId, guess);
   };
 
+  const toggleDebugMode = () => {
+    const params = new URLSearchParams(window.location.search);
+    if (debugMultiPlayer) {
+      params.delete("debug_multi_player");
+    } else {
+      params.set("debug_multi_player", "1");
+    }
+    const nextQuery = params.toString();
+    window.location.search = nextQuery ? `?${nextQuery}` : "";
+  };
+
   return (
     <main className="main-wrap">
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <p className="muted" style={{ margin: 0 }}>
+          调试模式：{debugMultiPlayer ? "开（多标签独立身份）" : "关（多标签共享身份）"}
+        </p>
+        <button className="btn secondary" style={{ width: "auto", minHeight: 34 }} onClick={toggleDebugMode}>
+          {debugMultiPlayer ? "关闭调试" : "开启调试"}
+        </button>
+      </div>
       <p className="muted">Decrypto Online</p>
       <h1 className="big-title">截码战</h1>
       <p className="muted">移动端优先 · 极简黑白 · 实时对局</p>

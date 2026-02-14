@@ -15,6 +15,11 @@ npm run dev:web
 - Web: `http://localhost:3000`
 - Server: `http://localhost:4100`
 
+## Debug Multi-Player Mode
+- Default behavior (normal play): tabs share the same identity via `localStorage`, so refresh/reopen can auto-reconnect as the same player.
+- Debug behavior: turn on "开启调试" in UI (or use `http://localhost:3000?debug_multi_player=1`) to isolate identity per tab via `sessionStorage`.
+- Use debug mode when you want multiple tabs/windows to simulate different players on one machine.
+
 ## Implemented Core
 - Game state model and round state machine
 - Room modes: 4 / 6 / 8 players (2 / 3 / 4 teams)
