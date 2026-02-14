@@ -24,6 +24,7 @@ export type Team = {
   label: string;
   playerIds: PlayerId[];
   secretWords: SecretWordSlot[];
+  score: number;
   bombs: number;
   raspberries: number;
   eliminated: boolean;
@@ -38,6 +39,11 @@ export type Attempt = {
   clues: [string, string, string] | null;
   internalGuess?: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
   interceptGuesses: Partial<Record<TeamId, [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>>;
+  scoreDeltas: Array<{
+    teamId: TeamId;
+    points: number;
+    reason: "INTERCEPT_CORRECT" | "INTERNAL_MISS";
+  }>;
   resolved: boolean;
   startedAt: number;
   cluesSubmittedAt?: number;
@@ -59,6 +65,7 @@ export type GameRoom = {
   round: number;
   activeTeamTurn: number;
   winnerTeamId?: TeamId;
+  winnerTeamIds?: TeamId[];
   players: Record<PlayerId, Player>;
   teams: Record<TeamId, Team>;
   teamOrder: TeamId[];

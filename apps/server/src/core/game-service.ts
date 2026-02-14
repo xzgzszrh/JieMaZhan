@@ -136,6 +136,7 @@ export class GameService {
         label: `Team ${String.fromCharCode(65 + i)}`,
         playerIds: [],
         secretWords: pickSecretWords(i + Math.floor(Math.random() * 100)),
+        score: 0,
         bombs: 0,
         raspberries: 0,
         eliminated: false
@@ -238,6 +239,7 @@ export class GameService {
       return {
         id: team.id,
         label: team.label,
+        score: team.score,
         bombs: team.bombs,
         raspberries: team.raspberries,
         eliminated: team.eliminated,
@@ -289,9 +291,11 @@ export class GameService {
         clues: attempt.clues,
         code: attempt.code,
         internalGuess: attempt.internalGuess,
-        interceptGuesses: attempt.interceptGuesses
+        interceptGuesses: attempt.interceptGuesses,
+        scoreDeltas: attempt.scoreDeltas
       })),
-      winnerTeamId: room.winnerTeamId
+      winnerTeamId: room.winnerTeamId,
+      winnerTeamIds: room.winnerTeamIds
     };
   }
 
@@ -312,6 +316,7 @@ export class GameService {
     if (activeTeams.length < 2) {
       room.status = "FINISHED";
       room.winnerTeamId = activeTeams[0];
+      room.winnerTeamIds = activeTeams[0] ? [activeTeams[0]] : [];
       return;
     }
 
@@ -329,6 +334,7 @@ export class GameService {
       code: randomCode(),
       clues: null,
       interceptGuesses: {},
+      scoreDeltas: [],
       resolved: false,
       startedAt: Date.now()
     };
@@ -424,6 +430,7 @@ export class GameService {
       const team = room.teams[teamId];
       if (!team.eliminated && team.raspberries >= targetRaspberry) {
         room.winnerTeamId = team.id;
+        room.winnerTeamIds = [team.id];
         return true;
       }
     }
@@ -431,6 +438,7 @@ export class GameService {
     const aliveTeams = room.teamOrder.filter((teamId) => !room.teams[teamId].eliminated);
     if (aliveTeams.length === 1) {
       room.winnerTeamId = aliveTeams[0];
+      room.winnerTeamIds = [aliveTeams[0]];
       return true;
     }
 
