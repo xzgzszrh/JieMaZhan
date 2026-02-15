@@ -111,6 +111,12 @@ select {
   border-color: var(--line);
 }
 
+.settings-btn {
+  width: auto;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
 .btn.danger {
   background: linear-gradient(135deg, #cf715c 0%, #b74b45 100%);
   border-color: #ad5347;
@@ -228,6 +234,123 @@ select {
   color: #b55b52;
 }
 
+.team-progress {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed color-mix(in oklab, var(--team-border) 44%, var(--line));
+}
+
+.team-progress-track {
+  background: color-mix(in oklab, var(--team-bg) 62%, #fff);
+  border-color: color-mix(in oklab, var(--team-border) 58%, var(--line));
+}
+
+.team-progress-fill {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--team-border) 52%, #fff) 0%,
+    var(--team-border) 100%
+  );
+}
+
+.teams-two-layout {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: 8px;
+}
+
+.teams-multi-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.team-main-card {
+  margin-top: 0;
+}
+
+.teams-two-layout .team-main-card {
+  min-width: 0;
+}
+
+.team-status-compact {
+  --team-bg: #fff4e4;
+  --team-border: #d9af77;
+  --team-text: #8a5828;
+  --team-progress: 0%;
+  border: 1px solid color-mix(in oklab, var(--team-border) 55%, var(--line));
+  background: linear-gradient(180deg, color-mix(in oklab, var(--team-bg) 60%, #fff) 0%, color-mix(in oklab, var(--team-bg) 86%, #fff) 100%);
+  border-radius: 12px;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.team-radial-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.team-radial {
+  --team-progress: 0%;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: conic-gradient(var(--team-border) var(--team-progress), color-mix(in oklab, var(--team-bg) 75%, #fff) 0);
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.team-radial::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--team-bg) 85%, #fff);
+}
+
+.team-radial span {
+  position: relative;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--team-text);
+}
+
+.team-radial.mini {
+  width: 46px;
+  height: 46px;
+}
+
+.team-radial.mini::before {
+  inset: 6px;
+}
+
+.team-radial.mini span {
+  font-size: 10px;
+}
+
+.teams-others-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 8px;
+}
+
+.team-status-mini {
+  --team-bg: #fff4e4;
+  --team-border: #d9af77;
+  --team-text: #8a5828;
+  --team-progress: 0%;
+  border: 1px solid color-mix(in oklab, var(--team-border) 58%, var(--line));
+  background: linear-gradient(180deg, color-mix(in oklab, var(--team-bg) 66%, #fff) 0%, color-mix(in oklab, var(--team-bg) 86%, #fff) 100%);
+  border-radius: 10px;
+  padding: 8px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
 .fixed-action {
   position: fixed;
   left: 0;
@@ -291,6 +414,16 @@ select {
   background: linear-gradient(180deg, #fff7eb 0%, #f4e7cd 100%);
   box-shadow: 0 20px 40px rgba(112, 82, 46, 0.24);
   animation: confirm-enter 180ms ease;
+}
+
+.info-panel {
+  width: min(560px, 100%);
+}
+
+.info-close-btn {
+  width: auto;
+  min-height: 32px;
+  padding: 0 10px;
 }
 
 .confirm-title {
@@ -573,5 +706,39 @@ select {
 
   .confirm-panel {
     animation: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .teams-two-layout {
+    grid-template-columns: 3fr 1fr;
+    gap: 6px;
+  }
+
+  .team-status-compact {
+    padding: 6px;
+    gap: 6px;
+  }
+
+  .team-status-compact strong {
+    font-size: 14px;
+    line-height: 1.2;
+  }
+
+  .team-status-compact .team-score {
+    font-size: 11px;
+  }
+
+  .team-status-compact .team-radial {
+    width: 46px;
+    height: 46px;
+  }
+
+  .team-status-compact .team-radial::before {
+    inset: 6px;
+  }
+
+  .team-status-compact .team-radial span {
+    font-size: 10px;
   }
 }
