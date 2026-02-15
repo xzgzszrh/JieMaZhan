@@ -3,11 +3,11 @@ export type PlayerId = string;
 
 export type GameStatus = "LOBBY" | "IN_GAME" | "FINISHED";
 export type RoundPhase = "SPEAKING" | "GUESSING";
+export type FinishedReason = "NORMAL" | "DISCONNECT_TIMEOUT" | "HOST_FORCED";
 
 export type SecretWordSlot = {
   index: 1 | 2 | 3 | 4;
   zh: string;
-  en: string;
 };
 
 export type Player = {
@@ -24,9 +24,7 @@ export type Team = {
   label: string;
   playerIds: PlayerId[];
   secretWords: SecretWordSlot[];
-  bombs: number;
-  raspberries: number;
-  eliminated: boolean;
+  score: number;
 };
 
 export type Attempt = {
@@ -34,10 +32,17 @@ export type Attempt = {
   round: number;
   targetTeamId: TeamId;
   speakerPlayerId: PlayerId;
+  internalGuesserPlayerId: PlayerId;
   code: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
   clues: [string, string, string] | null;
   internalGuess?: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
-  interceptGuesses: Partial<Record<TeamId, [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>>;
+  internalGuessByPlayerId?: PlayerId;
+  interceptGuesses: Partial<Record<PlayerId, [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>>;
+  scoreDeltas: Array<{
+    teamId: TeamId;
+    points: number;
+    reason: "INTERCEPT_CORRECT" | "INTERNAL_MISS";
+  }>;
   resolved: boolean;
   startedAt: number;
   cluesSubmittedAt?: number;
@@ -51,23 +56,39 @@ export type DeductionRow = {
 
 export type GameRoom = {
   id: string;
+  roomName: string;
   hostPlayerId: PlayerId;
   targetPlayerCount: 4 | 6 | 8;
   createdAt: number;
   status: GameStatus;
+  finishedReason?: FinishedReason;
   phase?: RoundPhase;
   round: number;
-  activeTeamTurn: number;
-  winnerTeamId?: TeamId;
+  winnerTeamIds?: TeamId[];
+  disconnectState?: {
+    startedAt: number;
+    deadline: number;
+    disconnectedPlayerIds: PlayerId[];
+  };
   players: Record<PlayerId, Player>;
   teams: Record<TeamId, Team>;
   teamOrder: TeamId[];
-  currentAttempt?: Attempt;
+  currentAttempts: Attempt[];
   attemptHistory: Attempt[];
   deductionRows: DeductionRow[];
   timers: {
     speakingTimeout?: NodeJS.Timeout;
+    disconnectTimeout?: NodeJS.Timeout;
   };
+};
+
+export type JoinableRoomSummary = {
+  roomId: string;
+  roomName: string;
+  hostNickname: string;
+  status: GameStatus;
+  currentPlayerCount: number;
+  targetPlayerCount: 4 | 6 | 8;
 };
 
 export type AgentInterfaceInput = {

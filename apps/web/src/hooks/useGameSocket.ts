@@ -5,30 +5,80 @@ import { getSocket } from "@/lib/socket";
 import { GameView } from "@/types/game";
 
 type Ack<T> = (response: { ok: boolean; error?: string } & T) => void;
+type Identity = { roomId: string; playerId: string };
+export type JoinableRoom = {
+  roomId: string;
+  roomName: string;
+  hostNickname: string;
+  status: "LOBBY" | "IN_GAME" | "FINISHED";
+  currentPlayerCount: number;
+  targetPlayerCount: 4 | 6 | 8;
+};
+
+const parseDebugModeFromUrl = (): boolean => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get("debug_multi_player");
+  return value === "1" || value === "true";
+};
 
 export const useGameSocket = () => {
   const socket = useMemo(() => getSocket(), []);
   const [state, setState] = useState<GameView | null>(null);
+  const [availableRooms, setAvailableRooms] = useState<JoinableRoom[]>([]);
   const [error, setError] = useState<string>("");
-  const [identity, setIdentity] = useState<{ roomId: string; playerId: string } | null>(null);
+  const [identity, setIdentity] = useState<Identity | null>(null);
+  const debugMultiPlayer = useMemo(() => parseDebugModeFromUrl(), []);
+  const identityStorage = useMemo<Storage | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+    return debugMultiPlayer ? window.sessionStorage : window.localStorage;
+  }, [debugMultiPlayer]);
+  const identityStorageKey = debugMultiPlayer ? "decrypto_identity_debug" : "decrypto_identity";
+  const clearSession = () => {
+    setState(null);
+    setIdentity(null);
+    identityStorage?.removeItem(identityStorageKey);
+  };
 
   useEffect(() => {
-    const identityRaw = window.localStorage.getItem("decrypto_identity");
+    if (!identityStorage) {
+      return;
+    }
+    const identityRaw = identityStorage.getItem(identityStorageKey);
     if (identityRaw) {
       try {
-        const parsed = JSON.parse(identityRaw) as { roomId: string; playerId: string };
+        const parsed = JSON.parse(identityRaw) as Identity;
         setIdentity(parsed);
       } catch {
-        window.localStorage.removeItem("decrypto_identity");
+        identityStorage.removeItem(identityStorageKey);
       }
     }
 
     const onUpdate = (nextState: GameView) => setState(nextState);
+    const onRoomsUpdate = (rooms: JoinableRoom[]) => setAvailableRooms(rooms);
+    const onSessionCleared = () => clearSession();
     socket.on("state:update", onUpdate);
+    socket.on("rooms:update", onRoomsUpdate);
+    socket.on("session:cleared", onSessionCleared);
 
     return () => {
       socket.off("state:update", onUpdate);
+      socket.off("rooms:update", onRoomsUpdate);
+      socket.off("session:cleared", onSessionCleared);
     };
+  }, [identityStorage, identityStorageKey, socket]);
+
+  useEffect(() => {
+    socket.emit("room:list", {}, (ack: { ok: boolean; rooms?: JoinableRoom[]; error?: string }) => {
+      if (!ack.ok || !ack.rooms) {
+        return;
+      }
+      setAvailableRooms(ack.rooms);
+    });
   }, [socket]);
 
   useEffect(() => {
@@ -54,7 +104,7 @@ export const useGameSocket = () => {
           }
           const nextIdentity = { roomId: ack.roomId, playerId: ack.playerId };
           setIdentity(nextIdentity);
-          window.localStorage.setItem("decrypto_identity", JSON.stringify(nextIdentity));
+          identityStorage?.setItem(identityStorageKey, JSON.stringify(nextIdentity));
           resolve();
         }
       );
@@ -70,7 +120,7 @@ export const useGameSocket = () => {
         }
         const nextIdentity = { roomId: ack.roomId, playerId: ack.playerId };
         setIdentity(nextIdentity);
-        window.localStorage.setItem("decrypto_identity", JSON.stringify(nextIdentity));
+        identityStorage?.setItem(identityStorageKey, JSON.stringify(nextIdentity));
         resolve();
       });
     });
@@ -81,6 +131,31 @@ export const useGameSocket = () => {
       return Promise.reject(new Error("Not in room"));
     }
     return emitWithAck("game:start", identity);
+  };
+
+  const forceFinishGame = (): Promise<void> => {
+    if (!identity) {
+      return Promise.reject(new Error("Not in room"));
+    }
+    return emitWithAck("game:force-finish", identity);
+  };
+
+  const leaveRoom = async (): Promise<void> => {
+    if (!identity) {
+      throw new Error("Not in room");
+    }
+    await emitWithAck("room:leave", identity);
+    clearSession();
+    await refreshJoinableRooms();
+  };
+
+  const disbandRoom = async (): Promise<void> => {
+    if (!identity) {
+      throw new Error("Not in room");
+    }
+    await emitWithAck("room:disband", identity);
+    clearSession();
+    await refreshJoinableRooms();
   };
 
   const submitClues = (clues: [string, string, string]): Promise<void> => {
@@ -126,15 +201,34 @@ export const useGameSocket = () => {
     });
   };
 
+  const refreshJoinableRooms = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      socket.emit("room:list", {}, (ack: { ok: boolean; rooms?: JoinableRoom[]; error?: string }) => {
+        if (!ack.ok || !ack.rooms) {
+          reject(new Error(ack.error ?? "Load rooms failed"));
+          return;
+        }
+        setAvailableRooms(ack.rooms);
+        resolve();
+      });
+    });
+  };
+
   return {
     state,
+    availableRooms,
     error,
+    debugMultiPlayer,
     identity,
     createRoom,
     joinRoom,
     startGame,
+    forceFinishGame,
+    leaveRoom,
+    disbandRoom,
     submitClues,
     submitGuess,
-    aiAction
+    aiAction,
+    refreshJoinableRooms
   };
 };

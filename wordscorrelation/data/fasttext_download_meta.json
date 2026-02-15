@@ -1,0 +1,8 @@
+{
+  "source_url": "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.zh.300.bin.gz",
+  "gz_path": "data/models/cc.zh.300.bin.gz",
+  "bin_path": "data/models/cc.zh.300.bin",
+  "gz_size_bytes": 4478681770,
+  "bin_size_bytes": 7235975017,
+  "bin_sha256": "9219907cb26988af70d3dbf471ca777fb21082bd2ea70189f4ac4bed508d82cf"
+}

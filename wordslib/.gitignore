@@ -1,0 +1,45 @@
+# Based on GitHub's official Python.gitignore template:
+# https://github.com/github/gitignore/blob/main/Python.gitignore
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Tool caches / test artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Local env files
+.env
+.env.*
+
+# macOS junk
+.DS_Store
+
+# wordslib data artifacts (downloaded and generated)
+data/raw/
+data/intermediate/
+data/processed/
+data/tmp/
+data/downloads_meta.json
+
+# Common binary artifacts
+*.pt
+*.pth
+*.bin

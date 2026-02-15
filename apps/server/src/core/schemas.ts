@@ -20,6 +20,13 @@ export const startGameSchema = z.object({
   playerId: z.string().trim().uuid()
 });
 
+export const roomActionSchema = z.object({
+  roomId: z.string().trim(),
+  playerId: z.string().trim().uuid()
+});
+
+export const forceFinishSchema = roomActionSchema;
+
 export const submitCluesSchema = z.object({
   roomId: z.string().trim(),
   playerId: z.string().trim().uuid(),

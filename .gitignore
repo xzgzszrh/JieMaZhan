@@ -24,3 +24,4 @@ yarn-error.log*
 .vscode/
 .idea/
 *.swp
+TEMP_IMPLEMENTATION_PLAN.md

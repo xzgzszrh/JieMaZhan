@@ -1,31 +1,38 @@
 export type TeamView = {
   id: string;
   label: string;
-  bombs: number;
-  raspberries: number;
-  eliminated: boolean;
+  score: number;
   players: Array<{ id: string; nickname: string; online: boolean }>;
-  secretWords?: Array<{ index: 1 | 2 | 3 | 4; zh: string; en: string }>;
 };
 
 export type GameView = {
   roomId: string;
+  roomName: string;
   status: "LOBBY" | "IN_GAME" | "FINISHED";
+  finishedReason?: "NORMAL" | "DISCONNECT_TIMEOUT" | "HOST_FORCED";
   phase?: "SPEAKING" | "GUESSING";
   round: number;
-  me: { id: string; nickname: string; teamId?: string };
+  disconnectState?: {
+    startedAt: number;
+    deadline: number;
+    disconnectedPlayerIds: string[];
+  };
+  me: { id: string; nickname: string; teamId?: string; isHost: boolean };
+  mySecretWords?: Array<{ index: 1 | 2 | 3 | 4; zh: string }>;
   teams: TeamView[];
-  currentAttempt?: {
+  currentAttempts: Array<{
     id: string;
     round: number;
     targetTeamId: string;
     speakerPlayerId: string;
+    internalGuesserPlayerId: string;
     startedAt: number;
     clues: [string, string, string] | null;
     code?: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
     internalGuessSubmitted: boolean;
-    interceptTeamsSubmitted: string[];
-  };
+    internalGuessByMe: boolean;
+    interceptPlayerIdsSubmitted: string[];
+  }>;
   deductionRows: Array<{
     round: number;
     teamId: string;
@@ -38,6 +45,11 @@ export type GameView = {
     code: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
     internalGuess?: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
     interceptGuesses: Record<string, [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]>;
+    scoreDeltas: Array<{
+      teamId: string;
+      points: number;
+      reason: "INTERCEPT_CORRECT" | "INTERNAL_MISS";
+    }>;
   }>;
-  winnerTeamId?: string;
+  winnerTeamIds?: string[];
 };

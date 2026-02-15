@@ -5,13 +5,14 @@ import {
   Attempt,
   DeductionRow,
   GameRoom,
+  JoinableRoomSummary,
   Player,
-  RoundPhase,
   Team,
   TeamId
 } from "../types/game.js";
 
 const SPEAKING_TIMEOUT_MS = 60_000;
+const DISCONNECT_TIMEOUT_MS = 30_000;
 
 const randomCode = (): [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4] => {
   const values: Array<1 | 2 | 3 | 4> = [1, 2, 3, 4];
@@ -64,15 +65,16 @@ export class GameService {
     };
     const room: GameRoom = {
       id: roomId,
+      roomName: `${nickname}的房间`,
       hostPlayerId: playerId,
       targetPlayerCount,
       createdAt: Date.now(),
       status: "LOBBY",
       round: 1,
-      activeTeamTurn: 0,
       players: { [playerId]: player },
       teams: {},
       teamOrder: [],
+      currentAttempts: [],
       attemptHistory: [],
       deductionRows: [],
       timers: {}
@@ -102,6 +104,46 @@ export class GameService {
     return { room, player };
   }
 
+  leaveRoom(roomId: string, playerId: string): { roomId: string } {
+    const room = this.getRoomOrThrow(roomId);
+    if (room.status !== "LOBBY" && room.status !== "FINISHED") {
+      throw new Error("Cannot leave during active game");
+    }
+    if (room.hostPlayerId === playerId) {
+      throw new Error("Host must disband room");
+    }
+    const player = room.players[playerId];
+    if (!player) {
+      throw new Error("Player not found");
+    }
+
+    if (player.teamId) {
+      const team = room.teams[player.teamId];
+      if (team) {
+        team.playerIds = team.playerIds.filter((id) => id !== playerId);
+      }
+    }
+    delete room.players[playerId];
+    this.notifyRoomChanged(room.id);
+    return { roomId: room.id };
+  }
+
+  disbandRoom(roomId: string, callerPlayerId: string): { roomId: string; affectedSocketIds: string[] } {
+    const room = this.getRoomOrThrow(roomId);
+    if (room.hostPlayerId !== callerPlayerId) {
+      throw new Error("Only host can disband room");
+    }
+
+    this.clearAllTimers(room);
+    const affectedSocketIds = Object.values(room.players)
+      .map((player) => player.socketId)
+      .filter((socketId) => Boolean(socketId));
+
+    this.rooms.delete(room.id);
+    this.notifyRoomChanged(room.id);
+    return { roomId: room.id, affectedSocketIds };
+  }
+
   reconnectPlayer(roomId: string, playerId: string, socketId: string): GameRoom {
     const room = this.getRoomOrThrow(roomId);
     const player = room.players[playerId];
@@ -109,6 +151,7 @@ export class GameService {
       throw new Error("Player not found");
     }
     player.socketId = socketId;
+    this.reconcileDisconnectState(room);
     this.notifyRoomChanged(room.id);
     return room;
   }
@@ -136,9 +179,7 @@ export class GameService {
         label: `Team ${String.fromCharCode(65 + i)}`,
         playerIds: [],
         secretWords: pickSecretWords(i + Math.floor(Math.random() * 100)),
-        bombs: 0,
-        raspberries: 0,
-        eliminated: false
+        score: 0
       };
     }
 
@@ -153,33 +194,41 @@ export class GameService {
 
     room.status = "IN_GAME";
     room.round = 1;
-    room.activeTeamTurn = 0;
-    this.startAttempt(room);
+    this.startRound(room);
     this.notifyRoomChanged(room.id);
     return room;
   }
 
   submitClues(roomId: string, playerId: string, rawClues: [string, string, string]): GameRoom {
     const room = this.getRoomOrThrow(roomId);
-    if (room.status !== "IN_GAME" || room.phase !== "SPEAKING" || !room.currentAttempt) {
+    if (room.status !== "IN_GAME" || room.phase !== "SPEAKING" || room.currentAttempts.length === 0) {
       throw new Error("Not in speaking phase");
     }
-    if (room.currentAttempt.speakerPlayerId !== playerId) {
+
+    const attempt = room.currentAttempts.find((item) => item.speakerPlayerId === playerId);
+    if (!attempt) {
       throw new Error("Only current speaker can submit clues");
+    }
+    if (attempt.clues) {
+      throw new Error("Clues already submitted");
     }
 
     const clues = rawClues.map((value) => value.trim().slice(0, 10)) as [string, string, string];
-    room.currentAttempt.clues = clues;
-    room.currentAttempt.cluesSubmittedAt = Date.now();
-    this.clearSpeakingTimer(room);
-    room.phase = "GUESSING";
+    attempt.clues = clues;
+    attempt.cluesSubmittedAt = Date.now();
+
+    if (this.isSpeakingComplete(room)) {
+      this.clearSpeakingTimer(room);
+      room.phase = "GUESSING";
+    }
+
     this.notifyRoomChanged(room.id);
     return room;
   }
 
   submitGuess(roomId: string, playerId: string, targetTeamId: string, guess: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4]): GameRoom {
     const room = this.getRoomOrThrow(roomId);
-    if (room.status !== "IN_GAME" || room.phase !== "GUESSING" || !room.currentAttempt) {
+    if (room.status !== "IN_GAME" || room.phase !== "GUESSING" || room.currentAttempts.length === 0) {
       throw new Error("Not in guessing phase");
     }
 
@@ -188,27 +237,46 @@ export class GameService {
       throw new Error("Player not in team");
     }
 
-    const attempt = room.currentAttempt;
-    if (attempt.targetTeamId !== targetTeamId) {
+    const attempt = room.currentAttempts.find((item) => item.targetTeamId === targetTeamId);
+    if (!attempt) {
       throw new Error("Target mismatch");
     }
 
     if (player.teamId === targetTeamId) {
+      if (attempt.internalGuesserPlayerId !== playerId) {
+        throw new Error("Only designated teammate can submit internal guess");
+      }
       if (attempt.internalGuess) {
         throw new Error("Internal guess already submitted");
       }
       attempt.internalGuess = guess;
+      attempt.internalGuessByPlayerId = playerId;
     } else {
-      if (attempt.interceptGuesses[player.teamId]) {
-        throw new Error("Intercept guess already submitted by your team");
+      if (attempt.interceptGuesses[playerId]) {
+        throw new Error("Intercept guess already submitted by you for this target");
       }
-      attempt.interceptGuesses[player.teamId] = guess;
+      attempt.interceptGuesses[playerId] = guess;
     }
 
-    if (this.isGuessingComplete(room, attempt)) {
-      this.resolveAttempt(room, attempt);
+    if (this.isGuessingComplete(room)) {
+      this.resolveRound(room);
+      return room;
     }
 
+    this.notifyRoomChanged(room.id);
+    return room;
+  }
+
+  forceFinishGame(roomId: string, callerPlayerId: string): GameRoom {
+    const room = this.getRoomOrThrow(roomId);
+    if (room.hostPlayerId !== callerPlayerId) {
+      throw new Error("Only host can force finish");
+    }
+    if (room.status !== "IN_GAME") {
+      throw new Error("Game is not in progress");
+    }
+
+    this.finishGame(room, "HOST_FORCED");
     this.notifyRoomChanged(room.id);
     return room;
   }
@@ -219,6 +287,7 @@ export class GameService {
       const player = Object.values(room.players).find((p) => p.socketId === socketId);
       if (player) {
         player.socketId = "";
+        this.reconcileDisconnectState(room);
         impacted.push(room);
         this.notifyRoomChanged(room.id);
       }
@@ -238,9 +307,7 @@ export class GameService {
       return {
         id: team.id,
         label: team.label,
-        bombs: team.bombs,
-        raspberries: team.raspberries,
-        eliminated: team.eliminated,
+        score: team.score,
         players: team.playerIds.map((pid) => {
           const p = room.players[pid];
           return {
@@ -248,40 +315,41 @@ export class GameService {
             nickname: p.nickname,
             online: Boolean(p.socketId)
           };
-        }),
-        secretWords: me.teamId === teamId ? team.secretWords : undefined
+        })
       };
     });
 
-    const currentAttempt = room.currentAttempt
-      ? {
-          id: room.currentAttempt.id,
-          round: room.currentAttempt.round,
-          targetTeamId: room.currentAttempt.targetTeamId,
-          speakerPlayerId: room.currentAttempt.speakerPlayerId,
-          startedAt: room.currentAttempt.startedAt,
-          clues: room.currentAttempt.clues,
-          code:
-            room.currentAttempt.speakerPlayerId === playerId
-              ? room.currentAttempt.code
-              : undefined,
-          internalGuessSubmitted: Boolean(room.currentAttempt.internalGuess),
-          interceptTeamsSubmitted: Object.keys(room.currentAttempt.interceptGuesses)
-        }
-      : undefined;
+    const currentAttempts = room.currentAttempts.map((attempt) => ({
+      id: attempt.id,
+      round: attempt.round,
+      targetTeamId: attempt.targetTeamId,
+      speakerPlayerId: attempt.speakerPlayerId,
+      internalGuesserPlayerId: attempt.internalGuesserPlayerId,
+      startedAt: attempt.startedAt,
+      clues: attempt.clues,
+      code: attempt.speakerPlayerId === playerId ? attempt.code : undefined,
+      internalGuessSubmitted: Boolean(attempt.internalGuess),
+      internalGuessByMe: attempt.internalGuessByPlayerId === playerId,
+      interceptPlayerIdsSubmitted: Object.keys(attempt.interceptGuesses)
+    }));
 
     return {
       roomId: room.id,
+      roomName: room.roomName,
       status: room.status,
+      finishedReason: room.finishedReason,
       phase: room.phase,
       round: room.round,
+      disconnectState: room.disconnectState,
       me: {
         id: me.id,
         nickname: me.nickname,
-        teamId: me.teamId
+        teamId: me.teamId,
+        isHost: me.id === room.hostPlayerId
       },
+      mySecretWords: me.teamId ? room.teams[me.teamId]?.secretWords : undefined,
       teams,
-      currentAttempt,
+      currentAttempts,
       deductionRows: room.deductionRows,
       history: room.attemptHistory.map((attempt) => ({
         round: attempt.round,
@@ -289,10 +357,30 @@ export class GameService {
         clues: attempt.clues,
         code: attempt.code,
         internalGuess: attempt.internalGuess,
-        interceptGuesses: attempt.interceptGuesses
+        interceptGuesses: attempt.interceptGuesses,
+        scoreDeltas: attempt.scoreDeltas
       })),
-      winnerTeamId: room.winnerTeamId
+      winnerTeamIds: room.winnerTeamIds
     };
+  }
+
+  listJoinableRooms(): JoinableRoomSummary[] {
+    const rooms = Array.from(this.rooms.values())
+      .filter((room) => room.status === "LOBBY")
+      .filter((room) => Object.keys(room.players).length < room.targetPlayerCount)
+      .sort((a, b) => b.createdAt - a.createdAt);
+
+    return rooms.map((room) => {
+      const host = room.players[room.hostPlayerId];
+      return {
+        roomId: room.id,
+        roomName: room.roomName,
+        hostNickname: host?.nickname ?? "未知房主",
+        status: room.status,
+        currentPlayerCount: Object.keys(room.players).length,
+        targetPlayerCount: room.targetPlayerCount
+      };
+    });
   }
 
   getRoomOrThrow(roomId: string): GameRoom {
@@ -303,38 +391,43 @@ export class GameService {
     return room;
   }
 
-  private startAttempt(room: GameRoom): void {
+  private startRound(room: GameRoom): void {
     if (room.status !== "IN_GAME") {
       return;
     }
 
-    const activeTeams = room.teamOrder.filter((id) => !room.teams[id].eliminated);
-    if (activeTeams.length < 2) {
+    const teamCount = room.teamOrder.length;
+    if (teamCount < 2) {
       room.status = "FINISHED";
-      room.winnerTeamId = activeTeams[0];
+      room.winnerTeamIds = teamCount === 1 ? [room.teamOrder[0]] : [];
       return;
     }
 
-    const activeIndex = room.activeTeamTurn % activeTeams.length;
-    const targetTeamId = activeTeams[activeIndex];
-    const targetTeam = requireTeam(room, targetTeamId);
     const speakerIdx = (room.round - 1) % 2;
-    const speakerPlayerId = targetTeam.playerIds[speakerIdx] ?? targetTeam.playerIds[0];
+    room.currentAttempts = room.teamOrder.map((teamId) => {
+      const targetTeam = requireTeam(room, teamId);
+      const speakerPlayerId = targetTeam.playerIds[speakerIdx] ?? targetTeam.playerIds[0];
+      const internalGuesserPlayerId = targetTeam.playerIds.find((pid) => pid !== speakerPlayerId) ?? speakerPlayerId;
 
-    const attempt: Attempt = {
-      id: randomUUID(),
-      round: room.round,
-      targetTeamId,
-      speakerPlayerId,
-      code: randomCode(),
-      clues: null,
-      interceptGuesses: {},
-      resolved: false,
-      startedAt: Date.now()
-    };
+      const attempt: Attempt = {
+        id: randomUUID(),
+        round: room.round,
+        targetTeamId: teamId,
+        speakerPlayerId,
+        internalGuesserPlayerId,
+        code: randomCode(),
+        clues: null,
+        interceptGuesses: {},
+        scoreDeltas: [],
+        resolved: false,
+        startedAt: Date.now()
+      };
 
-    room.currentAttempt = attempt;
+      return attempt;
+    });
+
     room.phase = "SPEAKING";
+    room.disconnectState = undefined;
     this.armSpeakingTimeout(room);
   }
 
@@ -345,96 +438,208 @@ export class GameService {
     }
   }
 
+  private clearDisconnectTimer(room: GameRoom): void {
+    if (room.timers.disconnectTimeout) {
+      clearTimeout(room.timers.disconnectTimeout);
+      room.timers.disconnectTimeout = undefined;
+    }
+  }
+
+  private clearAllTimers(room: GameRoom): void {
+    this.clearSpeakingTimer(room);
+    this.clearDisconnectTimer(room);
+  }
+
   private armSpeakingTimeout(room: GameRoom): void {
     this.clearSpeakingTimer(room);
     room.timers.speakingTimeout = setTimeout(() => {
-      if (room.status !== "IN_GAME" || room.phase !== "SPEAKING" || !room.currentAttempt) {
+      if (room.status !== "IN_GAME" || room.phase !== "SPEAKING" || room.currentAttempts.length === 0) {
         return;
       }
-      room.currentAttempt.clues = ["", "", ""];
-      room.currentAttempt.cluesSubmittedAt = Date.now();
+
+      for (const attempt of room.currentAttempts) {
+        if (attempt.clues) {
+          continue;
+        }
+        attempt.clues = ["", "", ""];
+        attempt.cluesSubmittedAt = Date.now();
+      }
+
       room.phase = "GUESSING";
       this.notifyRoomChanged(room.id);
     }, SPEAKING_TIMEOUT_MS);
   }
 
-  private isGuessingComplete(room: GameRoom, attempt: Attempt): boolean {
-    if (!attempt.clues) {
-      return false;
-    }
-    const activeTeams = room.teamOrder.filter((id) => !room.teams[id].eliminated);
-    const interceptTeams = activeTeams.filter((id) => id !== attempt.targetTeamId);
-    const hasInternal = Boolean(attempt.internalGuess);
-    const interceptDone = interceptTeams.every((teamId) => Boolean(attempt.interceptGuesses[teamId]));
-    return hasInternal && interceptDone;
+  private isSpeakingComplete(room: GameRoom): boolean {
+    return room.currentAttempts.length > 0 && room.currentAttempts.every((attempt) => Boolean(attempt.clues));
   }
 
-  private resolveAttempt(room: GameRoom, attempt: Attempt): void {
-    if (attempt.resolved || !attempt.clues || !attempt.internalGuess) {
-      return;
+  private isGuessingComplete(room: GameRoom): boolean {
+    if (room.currentAttempts.length === 0) {
+      return false;
     }
-    attempt.resolved = true;
 
-    const targetTeam = requireTeam(room, attempt.targetTeamId);
+    for (const attempt of room.currentAttempts) {
+      if (!attempt.clues || !attempt.internalGuess) {
+        return false;
+      }
 
-    if (!equalCode(attempt.code, attempt.internalGuess)) {
-      targetTeam.bombs += 1;
-      if (targetTeam.bombs >= 2) {
-        targetTeam.eliminated = true;
+      for (const player of Object.values(room.players)) {
+        if (!player.teamId || player.teamId === attempt.targetTeamId) {
+          continue;
+        }
+        if (!attempt.interceptGuesses[player.id]) {
+          return false;
+        }
       }
     }
 
-    for (const [teamId, guess] of Object.entries(attempt.interceptGuesses)) {
-      if (!guess) {
+    return true;
+  }
+
+  private resolveRound(room: GameRoom): void {
+    for (const attempt of room.currentAttempts) {
+      if (!attempt.clues || !attempt.internalGuess) {
         continue;
       }
-      if (equalCode(attempt.code, guess)) {
-        room.teams[teamId].raspberries += 1;
+
+      attempt.resolved = true;
+      attempt.scoreDeltas = [];
+
+      const isInternalCorrect = equalCode(attempt.code, attempt.internalGuess);
+      const interceptWinnerTeamIds = new Set<TeamId>();
+
+      for (const [playerId, guess] of Object.entries(attempt.interceptGuesses)) {
+        if (!guess || !equalCode(attempt.code, guess)) {
+          continue;
+        }
+        const teamId = room.players[playerId]?.teamId;
+        if (!teamId || teamId === attempt.targetTeamId) {
+          continue;
+        }
+        interceptWinnerTeamIds.add(teamId);
       }
+
+      for (const teamId of interceptWinnerTeamIds) {
+        const team = room.teams[teamId];
+        if (!team) {
+          continue;
+        }
+        team.score += 1;
+        attempt.scoreDeltas.push({
+          teamId,
+          points: 1,
+          reason: "INTERCEPT_CORRECT"
+        });
+      }
+
+      if (!isInternalCorrect) {
+        for (const teamId of room.teamOrder) {
+          if (teamId === attempt.targetTeamId) {
+            continue;
+          }
+          const team = room.teams[teamId];
+          if (!team) {
+            continue;
+          }
+          team.score += 1;
+          attempt.scoreDeltas.push({
+            teamId,
+            points: 1,
+            reason: "INTERNAL_MISS"
+          });
+        }
+      }
+
+      this.recordDeduction(room, attempt);
+      room.attemptHistory.push(attempt);
     }
 
-    this.recordDeduction(room, attempt);
-    room.attemptHistory.push(attempt);
-    room.currentAttempt = undefined;
+    room.currentAttempts = [];
     room.phase = undefined;
+    room.disconnectState = undefined;
 
     if (this.updateWinner(room)) {
-      room.status = "FINISHED";
+      this.finishGame(room, "NORMAL");
       this.notifyRoomChanged(room.id);
       return;
     }
 
-    const activeTeams = room.teamOrder.filter((id) => !room.teams[id].eliminated);
-    const previousActiveIdx = activeTeams.findIndex((teamId) => teamId === attempt.targetTeamId);
-    let nextIdx = previousActiveIdx + 1;
-    if (nextIdx >= activeTeams.length) {
-      nextIdx = 0;
-      room.round += 1;
-    }
-    room.activeTeamTurn = nextIdx;
-    this.startAttempt(room);
+    room.round += 1;
+    this.startRound(room);
     this.notifyRoomChanged(room.id);
   }
 
   private updateWinner(room: GameRoom): boolean {
-    const teamCount = room.teamOrder.length;
-    const targetRaspberry = teamCount;
+    const winners = room.teamOrder.filter((teamId) => room.teams[teamId].score >= 2);
+    if (winners.length === 0) {
+      room.winnerTeamIds = undefined;
+      return false;
+    }
 
-    for (const teamId of room.teamOrder) {
-      const team = room.teams[teamId];
-      if (!team.eliminated && team.raspberries >= targetRaspberry) {
-        room.winnerTeamId = team.id;
-        return true;
+    room.winnerTeamIds = winners;
+    return true;
+  }
+
+  private finishGame(room: GameRoom, reason: "NORMAL" | "DISCONNECT_TIMEOUT" | "HOST_FORCED"): void {
+    room.status = "FINISHED";
+    room.phase = undefined;
+    room.finishedReason = reason;
+    room.disconnectState = undefined;
+    room.currentAttempts = [];
+    this.clearAllTimers(room);
+    if (reason !== "NORMAL") {
+      room.winnerTeamIds = [];
+    }
+  }
+
+  private reconcileDisconnectState(room: GameRoom): void {
+    if (room.status !== "IN_GAME") {
+      room.disconnectState = undefined;
+      this.clearDisconnectTimer(room);
+      return;
+    }
+
+    const disconnectedPlayerIds = Object.values(room.players)
+      .filter((player) => !player.socketId)
+      .map((player) => player.id);
+
+    if (disconnectedPlayerIds.length === 0) {
+      room.disconnectState = undefined;
+      this.clearDisconnectTimer(room);
+      return;
+    }
+
+    const now = Date.now();
+    const currentDeadline = room.disconnectState?.deadline ?? now + DISCONNECT_TIMEOUT_MS;
+    room.disconnectState = {
+      startedAt: room.disconnectState?.startedAt ?? now,
+      deadline: currentDeadline,
+      disconnectedPlayerIds
+    };
+
+    if (room.timers.disconnectTimeout) {
+      return;
+    }
+
+    const msLeft = Math.max(0, currentDeadline - now);
+    room.timers.disconnectTimeout = setTimeout(() => {
+      room.timers.disconnectTimeout = undefined;
+
+      if (room.status !== "IN_GAME") {
+        return;
       }
-    }
 
-    const aliveTeams = room.teamOrder.filter((teamId) => !room.teams[teamId].eliminated);
-    if (aliveTeams.length === 1) {
-      room.winnerTeamId = aliveTeams[0];
-      return true;
-    }
+      const stillDisconnected = Object.values(room.players).some((player) => !player.socketId);
+      if (!stillDisconnected) {
+        room.disconnectState = undefined;
+        this.notifyRoomChanged(room.id);
+        return;
+      }
 
-    return false;
+      this.finishGame(room, "DISCONNECT_TIMEOUT");
+      this.notifyRoomChanged(room.id);
+    }, msLeft);
   }
 
   private recordDeduction(room: GameRoom, attempt: Attempt): void {
@@ -461,8 +666,8 @@ export class GameService {
 
   async handleAIAction(roomId: string, teamId: string): Promise<[string, string, string]> {
     const room = this.getRoomOrThrow(roomId);
-    const attempt = room.currentAttempt;
-    if (!attempt || attempt.targetTeamId !== teamId) {
+    const attempt = room.currentAttempts.find((item) => item.targetTeamId === teamId);
+    if (!attempt) {
       throw new Error("No active attempt for this team");
     }
 

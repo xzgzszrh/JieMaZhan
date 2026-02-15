@@ -6,8 +6,10 @@ import { GameService } from "./core/game-service.js";
 import {
   aiActionSchema,
   createRoomSchema,
+  forceFinishSchema,
   joinRoomSchema,
   reconnectSchema,
+  roomActionSchema,
   startGameSchema,
   submitCluesSchema,
   submitGuessSchema
@@ -29,6 +31,9 @@ const io = new Server(server, {
 });
 
 const gameService = new GameService();
+const broadcastJoinableRooms = (): void => {
+  io.emit("rooms:update", gameService.listJoinableRooms());
+};
 
 const broadcastRoom = (roomId: string): void => {
   const room = gameService.getRoomOrThrow(roomId);
@@ -46,6 +51,7 @@ gameService.setOnRoomChanged((roomId) => {
   } catch {
     // Ignore room not found in delayed callback.
   }
+  broadcastJoinableRooms();
 });
 
 gameService.setAgentInterface(async ({ code, secretWords }) => {
@@ -59,6 +65,16 @@ gameService.setAgentInterface(async ({ code, secretWords }) => {
 });
 
 io.on("connection", (socket) => {
+  socket.emit("rooms:update", gameService.listJoinableRooms());
+
+  socket.on("room:list", (_payload, ack) => {
+    try {
+      ack?.({ ok: true, rooms: gameService.listJoinableRooms() });
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
   socket.on("room:create", (payload, ack) => {
     try {
       const parsed = createRoomSchema.parse(payload);
@@ -95,10 +111,50 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("room:leave", (payload, ack) => {
+    try {
+      const parsed = roomActionSchema.parse(payload);
+      const result = gameService.leaveRoom(parsed.roomId.toUpperCase(), parsed.playerId);
+      socket.leave(result.roomId);
+      ack?.({ ok: true });
+      io.to(socket.id).emit("session:cleared", { reason: "LEFT_ROOM" });
+      broadcastRoom(result.roomId);
+      broadcastJoinableRooms();
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  socket.on("room:disband", (payload, ack) => {
+    try {
+      const parsed = roomActionSchema.parse(payload);
+      const result = gameService.disbandRoom(parsed.roomId.toUpperCase(), parsed.playerId);
+      for (const socketId of result.affectedSocketIds) {
+        io.to(socketId).emit("session:cleared", { reason: "ROOM_DISBANDED" });
+        io.sockets.sockets.get(socketId)?.leave(result.roomId);
+      }
+      ack?.({ ok: true });
+      broadcastJoinableRooms();
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
   socket.on("game:start", (payload, ack) => {
     try {
       const parsed = startGameSchema.parse(payload);
       const room = gameService.startGame(parsed.roomId.toUpperCase(), parsed.playerId);
+      ack?.({ ok: true });
+      broadcastRoom(room.id);
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  socket.on("game:force-finish", (payload, ack) => {
+    try {
+      const parsed = forceFinishSchema.parse(payload);
+      const room = gameService.forceFinishGame(parsed.roomId.toUpperCase(), parsed.playerId);
       ack?.({ ok: true });
       broadcastRoom(room.id);
     } catch (error) {
