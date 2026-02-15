@@ -147,6 +147,81 @@ select {
   justify-content: space-between;
 }
 
+.team-status-row {
+  --team-bg: #fff4e4;
+  --team-border: #d9af77;
+  --team-text: #8a5828;
+  --team-chip: #efcf9f;
+  border: 1px solid color-mix(in oklab, var(--team-border) 55%, var(--line));
+  background: linear-gradient(180deg, color-mix(in oklab, var(--team-bg) 55%, #fff) 0%, color-mix(in oklab, var(--team-bg) 86%, #fff) 100%);
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  box-shadow: 0 2px 0 rgba(255, 255, 255, 0.3) inset;
+}
+
+.team-status-row.is-active {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--team-border) 50%, transparent), 0 2px 0 rgba(255, 255, 255, 0.3) inset;
+}
+
+.team-status-row.is-mine {
+  border-style: solid;
+  border-width: 2px;
+}
+
+.team-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--team-border);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--team-border) 22%, #fff);
+}
+
+.team-action-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--team-border) 78%, #b9a389);
+  color: var(--team-text);
+  background: var(--team-chip);
+}
+
+.team-action-badge.is-mine {
+  font-weight: 700;
+}
+
+.team-score {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.team-score.pop {
+  animation: score-pop 460ms ease;
+}
+
+.team-score-delta {
+  position: absolute;
+  right: -30px;
+  top: -2px;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  animation: score-float 900ms ease forwards;
+}
+
+.team-score-delta.plus {
+  color: #4f9b67;
+}
+
+.team-score-delta.minus {
+  color: #b55b52;
+}
+
 .fixed-action {
   position: fixed;
   left: 0;
@@ -357,6 +432,32 @@ select {
   }
 }
 
+@keyframes score-pop {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes score-float {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.94);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px) scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card,
   .stage-card,
@@ -367,6 +468,11 @@ select {
   }
 
   .countdown-block.warning.pulse {
+    animation: none !important;
+  }
+
+  .team-score.pop,
+  .team-score-delta {
     animation: none !important;
   }
 }

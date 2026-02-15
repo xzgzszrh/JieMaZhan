@@ -1,11 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useGameSocket } from "@/hooks/useGameSocket";
 import { ActionButton } from "@/components/ActionButton";
 
 const DIGITS = [1, 2, 3, 4] as const;
 type GuessTuple = [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
+type TeamTone = { bg: string; border: string; text: string; chip: string };
+type TeamActionMeta = { label: string; active: boolean; mine: boolean };
+
+const TEAM_TONES: TeamTone[] = [
+  { bg: "#fff0ec", border: "#d18878", text: "#8e4336", chip: "#efc1b7" },
+  { bg: "#eef7ec", border: "#91b88a", text: "#456b3d", chip: "#c7dec2" },
+  { bg: "#ecf8f9", border: "#7fb9bd", text: "#2e6e74", chip: "#b9dde0" },
+  { bg: "#f4effa", border: "#a796cb", text: "#584982", chip: "#d4c9ea" }
+];
 
 export default function Page() {
   const {
@@ -34,8 +43,11 @@ export default function Page() {
   const [disconnectSecondsLeft, setDisconnectSecondsLeft] = useState(30);
   const [roundPulse, setRoundPulse] = useState(false);
   const [actionSuccessState, setActionSuccessState] = useState<Record<string, boolean>>({});
+  const [scoreFeedbackByTeam, setScoreFeedbackByTeam] = useState<Record<string, number>>({});
   const prevRoundRef = useRef<number | undefined>(undefined);
   const successTimersRef = useRef<Record<string, number>>({});
+  const prevScoresRef = useRef<Record<string, number>>({});
+  const scoreFeedbackTimersRef = useRef<Record<string, number>>({});
 
   const myTeam = useMemo(() => state?.teams.find((t) => t.id === state.me.teamId), [state]);
   const myTeamId = state?.me.teamId;
@@ -161,6 +173,57 @@ export default function Page() {
         rows: state.deductionRows.filter((row) => row.teamId === team.id)
       }))
       .filter((group) => group.rows.length > 0);
+  }, [state]);
+  const teamToneById = useMemo(() => {
+    if (!state) {
+      return new Map<string, TeamTone>();
+    }
+    return new Map(state.teams.map((team, index) => [team.id, TEAM_TONES[index % TEAM_TONES.length]] as const));
+  }, [state]);
+  const teamActionMetaById = useMemo(() => {
+    const meta = new Map<string, TeamActionMeta>();
+    if (!state || state.status !== "IN_GAME") {
+      return meta;
+    }
+
+    const attemptByTeamId = new Map(state.currentAttempts.map((attempt) => [attempt.targetTeamId, attempt] as const));
+    for (const team of state.teams) {
+      const attempt = attemptByTeamId.get(team.id);
+      if (!attempt) {
+        continue;
+      }
+
+      if (state.phase === "SPEAKING") {
+        const submitted = Boolean(attempt.clues);
+        const mine = attempt.speakerPlayerId === state.me.id && !submitted;
+        meta.set(team.id, {
+          label: submitted ? "已发言" : mine ? "你在发言" : "发言中",
+          active: !submitted,
+          mine
+        });
+        continue;
+      }
+
+      if (!attempt.internalGuessSubmitted) {
+        const mine = attempt.internalGuesserPlayerId === state.me.id;
+        meta.set(team.id, {
+          label: mine ? "你待内猜" : "待内猜",
+          active: true,
+          mine
+        });
+        continue;
+      }
+
+      const requiredInterceptCount = state.teams.reduce((sum, item) => sum + (item.id === team.id ? 0 : item.players.length), 0);
+      const interceptPending = attempt.interceptPlayerIdsSubmitted.length < requiredInterceptCount;
+      const mine = state.me.teamId !== team.id && !attempt.interceptPlayerIdsSubmitted.includes(state.me.id);
+      meta.set(team.id, {
+        label: interceptPending ? (mine ? "你待截获" : "待截获") : "已完成",
+        active: interceptPending,
+        mine
+      });
+    }
+    return meta;
   }, [state]);
   const roundProgress = useMemo(() => {
     if (!state || state.status !== "IN_GAME") {
@@ -387,8 +450,51 @@ export default function Page() {
   useEffect(() => {
     return () => {
       Object.values(successTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+      Object.values(scoreFeedbackTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
     };
   }, []);
+
+  useEffect(() => {
+    if (!state?.teams?.length) {
+      prevScoresRef.current = {};
+      setScoreFeedbackByTeam({});
+      return;
+    }
+
+    const prevScores = prevScoresRef.current;
+    const nextScores: Record<string, number> = {};
+    const deltas: Record<string, number> = {};
+
+    for (const team of state.teams) {
+      nextScores[team.id] = team.score;
+      const prev = prevScores[team.id];
+      if (typeof prev === "number" && team.score !== prev) {
+        deltas[team.id] = team.score - prev;
+      }
+    }
+
+    prevScoresRef.current = nextScores;
+    if (Object.keys(deltas).length === 0) {
+      return;
+    }
+
+    for (const [teamId, delta] of Object.entries(deltas)) {
+      const activeTimer = scoreFeedbackTimersRef.current[teamId];
+      if (activeTimer) {
+        window.clearTimeout(activeTimer);
+      }
+
+      setScoreFeedbackByTeam((prev) => ({ ...prev, [teamId]: delta }));
+      scoreFeedbackTimersRef.current[teamId] = window.setTimeout(() => {
+        setScoreFeedbackByTeam((prev) => {
+          const next = { ...prev };
+          delete next[teamId];
+          return next;
+        });
+        delete scoreFeedbackTimersRef.current[teamId];
+      }, 1300);
+    }
+  }, [state?.teams, state?.round]);
 
   return (
     <main className="main-wrap">
@@ -641,17 +747,45 @@ export default function Page() {
 
           <section className="card" style={{ marginTop: 10 }}>
             <h2 className="title">队伍状态</h2>
-            {state.teams.map((team) => (
-              <div key={team.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 8, marginTop: 8 }}>
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <strong>{team.label}</strong>
-                  <span className="muted">积分 {team.score}</span>
+            {state.teams.map((team) => {
+              const teamTone = teamToneById.get(team.id) ?? TEAM_TONES[0];
+              const actionMeta = teamActionMetaById.get(team.id);
+              const teamStyle = {
+                "--team-bg": teamTone.bg,
+                "--team-border": teamTone.border,
+                "--team-text": teamTone.text,
+                "--team-chip": teamTone.chip
+              } as CSSProperties;
+
+              return (
+                <div
+                  key={team.id}
+                  className={`team-status-row ${actionMeta?.active ? "is-active" : ""} ${actionMeta?.mine ? "is-mine" : ""}`}
+                  style={teamStyle}
+                >
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <div className="row" style={{ alignItems: "center" }}>
+                      <span className="team-color-dot" />
+                      <strong>{team.label}</strong>
+                    </div>
+                    <div className="row" style={{ alignItems: "center" }}>
+                      {actionMeta && <span className={`team-action-badge ${actionMeta.mine ? "is-mine" : ""}`}>{actionMeta.label}</span>}
+                      <span className={`team-score ${scoreFeedbackByTeam[team.id] ? "pop" : ""}`}>
+                        积分 {team.score}
+                        {scoreFeedbackByTeam[team.id] ? (
+                          <span className={`team-score-delta ${scoreFeedbackByTeam[team.id] > 0 ? "plus" : "minus"}`}>
+                            {scoreFeedbackByTeam[team.id] > 0 ? `+${scoreFeedbackByTeam[team.id]}` : scoreFeedbackByTeam[team.id]}
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="muted" style={{ margin: "5px 0" }}>
+                    {team.players.map((p) => `${p.nickname}${p.online ? "" : "(离线)"}`).join(" · ")}
+                  </p>
                 </div>
-                <p className="muted" style={{ margin: "5px 0" }}>
-                  {team.players.map((p) => `${p.nickname}${p.online ? "" : "(离线)"}`).join(" · ")}
-                </p>
-              </div>
-            ))}
+              );
+            })}
             {state.mySecretWords && (
               <div style={{ borderTop: "1px solid var(--line)", paddingTop: 8, marginTop: 8 }}>
                 <p className="muted" style={{ margin: 0 }}>
