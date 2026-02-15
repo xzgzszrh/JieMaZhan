@@ -24,6 +24,9 @@ export const roomActionSchema = z.object({
   roomId: z.string().trim(),
   playerId: z.string().trim().uuid()
 });
+export const teamJoinSchema = roomActionSchema.extend({
+  teamId: z.string().trim().min(1)
+});
 
 export const forceFinishSchema = roomActionSchema;
 

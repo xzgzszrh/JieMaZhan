@@ -46,7 +46,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def iter_thuocl_files(input_dir: Path) -> list[Path]:
-    return sorted(input_dir.glob("THUOCL_*.txt"))
+    excluded_files = {"THUOCL_IT.txt"}
+    return sorted(
+        path for path in input_dir.glob("THUOCL_*.txt") if path.name not in excluded_files
+    )
 
 
 def extract_word_and_freq(line: str) -> tuple[str, int] | None:

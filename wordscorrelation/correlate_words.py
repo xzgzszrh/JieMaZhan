@@ -18,13 +18,13 @@ import fasttext
 
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_FTZ_MODEL_PATH = ROOT / "data" / "models" / "cc.zh.300.ftz"
+DEFAULT_REDUCED_BIN_MODEL_PATH = ROOT / "data" / "models" / "cc.zh.100.bin"
 DEFAULT_BIN_MODEL_PATH = ROOT / "data" / "models" / "cc.zh.300.bin"
 
 
 def resolve_default_model_path() -> Path:
-    if DEFAULT_FTZ_MODEL_PATH.exists():
-        return DEFAULT_FTZ_MODEL_PATH
+    if DEFAULT_REDUCED_BIN_MODEL_PATH.exists():
+        return DEFAULT_REDUCED_BIN_MODEL_PATH
     return DEFAULT_BIN_MODEL_PATH
 
 
@@ -73,8 +73,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=resolve_default_model_path(),
         help=(
-            "Path to fastText model (.ftz or .bin). "
-            f"Default prefers {DEFAULT_FTZ_MODEL_PATH} then {DEFAULT_BIN_MODEL_PATH}."
+            "Path to fastText model (.bin). "
+            f"Default prefers {DEFAULT_REDUCED_BIN_MODEL_PATH} then {DEFAULT_BIN_MODEL_PATH}."
         ),
     )
     parser.add_argument(

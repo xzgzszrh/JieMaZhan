@@ -1,8 +1,8 @@
-# 猜词截码战 - 项目交接草稿（v4）
+# 猜词截码战 - 项目交接草稿（v7）
 
 ## 1. 目标与范围
 - 目标：实现多人在线猜词截码战，规则为“按顺序描述三词、组内猜顺序、他组截获、统一积分、先到 2 分获胜（支持并列）”。
-- 范围：`apps/server`（Express + Socket.io）与 `apps/web`（Next.js App Router）。
+- 范围：`apps/server`（Express + Socket.io）、`apps/web`（Next.js App Router）、`apps/word-service`（Python + Flask 词语相关度服务）。
 
 ## 2. 已确认规则（当前实现）
 - 每组 2 人，每组 4 个词（编号 1/2/3/4）。
@@ -26,20 +26,49 @@
   - 词条改为仅中文：`SecretWordSlot` 仅保留 `{ index, zh }`，不再使用英文字段。
   - 词库改为后端文件加载：服务端从 `apps/server/src/data/thuocl_words_max4.txt` 读取，不再硬编码在 `word-bank.ts`。
   - 每队 4 词抽取改为“从大词库按 seed 抽 4 个不重复词”，支持可复现。
+  - `ai:action` 已接入独立词语服务：对编码对应的 3 个目标词分别查询近邻词（Top 10），每词随机抽 1 个作为线索。
+  - AI 线索生成保留降级兜底：当词语服务不可用/超时时，回退为目标词前 2 个字，避免功能中断。
 - 房间能力
   - 创建房间后命名为 `XXX的房间`。
   - 大厅支持 `room:list` 与 `rooms:update` 的可加入房间列表。
+  - 准备阶段支持手动选队（`team:join`）：
+    - 不限制队伍人数，可自由换队。
+    - 仅在开局时校验“每队必须恰好 2 人”，不满足则禁止 `game:start`。
   - 房主可解散房间（`room:disband`）。
   - 房主可在 `IN_GAME` 强制结束对局（`game:force-finish`）。
-  - 成员可在 `LOBBY` 和 `FINISHED` 退出房间（`room:leave`）；`IN_GAME` 禁止退出。
+  - `IN_GAME` 禁止退出；`LOBBY`/`FINISHED` 可退出（`room:leave`）。
+  - `FINISHED` 阶段房主也可直接 `room:leave`（不再强制解散）；房间无人后自动销毁。
 - 前端展示
   - 未入房时：先设昵称，再显示“创建房间/可用房间”。
-  - 入房后：顶部改为“你在某队 + 阶段任务 + 回合进度条（总进度/发言/内猜/截获）”。
+  - 主界面“可用房间”列表使用 socket 自动刷新，已移除手动“刷新”按钮。
+  - 全站 UI 主题已改为米色系（浅底 + 暖色强调），背景加入 Hero Pattern 重复印花。
+  - 动效已增强：阶段卡切换动效、Round 徽标变化强调、按钮按下/禁用/成功态反馈。
+  - 发言阶段倒计时已放入“发言面板”，最后 10 秒进入警示色并脉冲提示。
+  - 原生 `window.confirm` 已替换为前端自定义确认弹窗（可复用 Hook + 组件）。
+  - 入房后信息区已拆分：
+    - `LOBBY`：保留常驻准备窗口（开始/解散/退出）。
+    - `IN_GAME`：不再常驻顶部信息卡，改为“队伍状态”右上角设置按钮打开“战术面板”弹窗。
   - 对局中出现断线时，全员看到断线通知与 30s 倒计时。
-  - 对局中房主看到“强制结束对局”按钮。
+  - 对局中房主“强制结束对局”入口放在战术面板弹窗中。
+  - 任务文案已游戏化（指令式语气），不改变原有逻辑语义。
+  - 页面结构改为“按场景独立小窗显示”：
+    - 主界面 / 准备阶段 / 对局中 / 结束界面分别独立渲染，不再共用跨场景文案状态。
+  - 结算反馈已增强：积分变化时显示弹跳与浮动增量（如 `+1`）。
+  - 下拉框已改为统一自定义组件（`StyledSelect`），不再使用浏览器原生样式，并补充统一动效（展开/淡入/选项分段入场）。
+  - 调试模式开关已移至页面最下方。
+  - 当玩家处于发言面板时，该玩家的猜测面板不显示。
+  - 队伍状态区重构：
+    - 准备阶段：显示“队伍选择”列表（每队“加入”按钮 + 人数状态），3/4 队时使用网格布局优化。
+    - 只显示当前任务进度（发言阶段显示“发言进度”，猜测阶段显示“锁码进度”）。
+    - 2 队模式：自己的队伍固定在左侧（宽度 3/4），对手在右侧压缩卡（1/4），仅保留队名/积分/扇形进度。
+    - 4 队与 6 队模式：自己的队伍第一行横向放满；其他队伍在下一行以小方块显示，仅显示积分与扇形进度（不显示 Team 字母）。
+    - 通过卡片大小与位置区分“自己队伍”，已移除“你的队伍”文字标签。
   - 记录区改为“按队分组的简洁表”，仅显示 1/2/3/4 与线索历史行。
+  - 记录区可读性优化：新增“最新轮次”标记、最新/近期/历史记录分层高亮、抽屉开合过渡优化。
   - 前端不再在 `teams` 结构中持有词条，改为后端下发 `mySecretWords`（仅当前玩家所在队伍词条）。
   - 对局结束有独立“胜利/失败”界面，并根据 `finishedReason` 显示“正常结束/断线超时结束/房主强制结束”文案。
+  - 胜负界面不再显示“队伍状态”；改为展示所有队伍词汇（`revealedSecretWords`）。
+  - 结束后“返回主界面”统一走 `room:leave`（房主/成员一致），不再触发房主强制解散导致他人看不到结算页。
 
 - 词库预处理（新增）
   - 新增目录 `wordslib/`，用于词库下载与预处理。
@@ -49,12 +78,24 @@
     - 仅保留频次 `> 10000`
     - 跳过脏数据（频次非纯数字）
     - 输出为一行一个中文词（无数字）
+- 词语相关度服务（新增）
+  - 新增目录 `apps/word-service/`，与 Node 游戏后端分离部署。
+  - 模型目录：`apps/word-service/models/`（已局部 `.gitignore` 忽略）。
+  - 服务启动时会自动加载 fastText 模型并执行一次预热推理，降低首次请求延迟。
+  - 提供接口：
+    - `GET /health`
+    - `POST /api/v1/related-words`（`word` + `k`，默认 `k=10`，受 `MAX_K` 限制）。
 
 ## 4. 关键链路（交接必读）
 - 创建房间
   - `room:create` -> 返回 `roomId/playerId`。
   - 服务端写入 `roomName: ${nickname}的房间`。
+  - 同时预创建队伍容器（2/3/4 队），用于准备阶段手动选队。
   - 广播 `rooms:update`。
+- 准备阶段选队与开局校验（新增）
+  1. 玩家调用 `team:join` 切换到目标队伍（不限制当前队伍人数）。
+  2. 房主调用 `game:start` 时，服务端校验每队 `playerIds.length === 2`。
+  3. 任一队伍不满足 2 人时拒绝开局；前端显示检测结果并禁用开始按钮。
 - 同步回合流程
   1. `game:start` 后进入 `SPEAKING`，服务端生成所有队伍的 `currentAttempts`。
   2. 各队 speaker 分别 `speaker:submit`；全部提交（或超时补空线索）后进入 `GUESSING`。
@@ -65,6 +106,13 @@
   2. 运行 `python3.11 wordslib/extract_thuocl_max4.py` 产出 `wordslib/data/processed/thuocl_words_max4.txt`。
   3. 将产出复制到 `apps/server/src/data/thuocl_words_max4.txt`。
   4. 服务端启动时在 `apps/server/src/core/word-bank.ts` 读取该文件并用于抽词。
+- AI 词语服务接入链路（新增）
+  1. 启动 Python 词语服务（默认端口 `4201`）。
+  2. Node 服务通过环境变量 `WORD_SERVICE_URL` 指向词语服务（默认 `http://127.0.0.1:4201`）。
+  3. 前端触发 `ai:action` 时，Node 在 `setAgentInterface` 内调用词语服务：
+     - 对每个目标词调用 `POST /api/v1/related-words` 请求 Top 10
+     - 从每组近邻词随机选 1 个作为线索
+     - 若请求失败则对该词使用降级线索（前 2 字）
 - 对局中断线处理（新增）
   1. 任意玩家断线后，服务端在 `IN_GAME` 下启动 30s 宽限计时并写入 `disconnectState`。
   2. 宽限期内重连成功（`room:reconnect`）则取消断线状态并继续对局。
@@ -72,10 +120,9 @@
 - 房主强制结束（新增）
   - 房主在 `IN_GAME` 调用 `game:force-finish`，服务端立即结束：`status=FINISHED`，`finishedReason=HOST_FORCED`，`winnerTeamIds=[]`。
 - 结束返回主界面
-  - 前端“返回主界面”按钮：
-    - Host -> `room:disband`（解散房间）
-    - Member -> `room:leave`（退出房间）
-  - 服务端发 `session:cleared`，前端清理 identity 并回到大厅。
+  - 前端“返回主界面”按钮统一调用 `room:leave`（Host/Member 一致）。
+  - 单个玩家离开不会影响其他仍在 `FINISHED` 页面查看结算的成员。
+  - 房间最后一人离开后，服务端自动清理房间；离开方收到 `session:cleared` 并返回大厅。
 
 ## 5. 当前 Socket 事件
 - Client -> Server
@@ -85,6 +132,7 @@
   - `room:reconnect`
   - `room:leave`
   - `room:disband`
+  - `team:join`
   - `game:start`
   - `game:force-finish`
   - `speaker:submit`
@@ -100,13 +148,32 @@
   - 事件入口：`apps/server/src/index.ts`
   - 业务核心：`apps/server/src/core/game-service.ts`
   - 词库加载：`apps/server/src/core/word-bank.ts`
+  - AI 线索生成：`apps/server/src/core/ai-clue-generator.ts`
+  - 词语服务客户端：`apps/server/src/core/word-service-client.ts`
   - 词库文件：`apps/server/src/data/thuocl_words_max4.txt`
   - 参数校验：`apps/server/src/core/schemas.ts`
   - 类型定义：`apps/server/src/types/game.ts`
 - 前端
   - 页面：`apps/web/src/app/page.tsx`
+  - 全局样式：`apps/web/src/app/globals.css`
   - socket 封装：`apps/web/src/hooks/useGameSocket.ts`
+  - 自定义下拉组件：`apps/web/src/components/StyledSelect.tsx`
+  - 自定义确认弹窗 Hook：`apps/web/src/hooks/useConfirmDialog.tsx`
+  - 按钮组件：`apps/web/src/components/ActionButton.tsx`
+  - 确认弹窗组件：`apps/web/src/components/ConfirmDialog.tsx`
+  - 战术信息弹窗组件：`apps/web/src/components/InfoDialog.tsx`
   - 视图类型：`apps/web/src/types/game.ts`
+- 词语服务（新增）
+  - 入口：`apps/word-service/run.py`
+  - app 组装：`apps/word-service/app/__init__.py`
+  - 配置：`apps/word-service/app/config.py`
+  - 路由：`apps/word-service/app/routes.py`
+  - 业务服务：`apps/word-service/app/service.py`
+  - 模型加载：`apps/word-service/app/model_loader.py`
+  - 请求校验：`apps/word-service/app/schemas.py`
+  - 错误模型：`apps/word-service/app/errors.py`
+  - 依赖：`apps/word-service/requirements.txt`
+  - 设计文档：`apps/word-service/DESIGN.md`
 - 词库工具（新增）
   - 下载脚本：`wordslib/download_sources.py`
   - 清洗脚本：`wordslib/extract_thuocl_max4.py`
@@ -115,10 +182,17 @@
 ## 7. 现状注意事项 / 风险
 - 当前截获提交流程按“玩家维度”收集：每名玩家都要对每个他队提交一次；结算时再折算到队伍加分（同队同目标只记 1 分）。
 - `leaveRoom` 仅在 `LOBBY`/`FINISHED` 允许，`IN_GAME` 禁止；如果后续要支持中途退出，需要补托管/判负规则。
+- 准备阶段“选队”当前不限制人数，可能出现临近开局时短时间超编/空编；目前通过“开始前强校验 + 禁止开始”兜底。
+- `team:join` 当前不含并发锁，极端并发切队下以服务端最后写入为准（最终一致）。
 - 当前断线宽限为“房间级单计时器”：首次断线触发 30s 窗口；若窗口内新增断线，不会重置截止时间（沿用首个截止点）。
 - 记录区 UI 已简化为纯线索表，不再展示轮次与加分详情；如需审计解释可考虑单独“裁判日志”视图。
 - 词库中存在少量脏数据行（如频次含非数字字符），当前清洗脚本已跳过；若后续更换数据源，需复用同类校验。
 - 词库文件目前通过手动复制进入 `apps/server/src/data/`；如后续频繁更新，建议加自动同步脚本或 npm script。
+- AI 线索依赖外部内部服务（`apps/word-service`）；若服务未启动/超时，当前会回退到简化线索（前 2 字），可用性优先但语义质量会下降。
+- Node 到词语服务调用当前默认超时为 `1500ms`（`WORD_SERVICE_TIMEOUT_MS`）；网络抖动下可能触发降级。
+- 词语服务返回“随机抽取”结果，AI 线索天然不稳定（同一词多次调用可能不同），属于预期行为。
+- `useGameSocket` 的 `debugMultiPlayer` 在渲染期读取 URL 参数（`window.location.search`）；在部分场景可能出现 hydration mismatch 警告（功能不受影响，但建议后续改为 mounted 后再读取以彻底消除告警）。
+- 2 队模式在窄屏仍强制保持 3/4 + 1/4 横向布局（按产品要求不堆叠）；极窄宽度下右侧压缩卡信息密度较高，后续如需进一步优化可只保留图标+环形进度。
 
 ## 8. 完整游戏逻辑
 2队伍4人情况:

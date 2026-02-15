@@ -3,6 +3,7 @@ import cors from "cors";
 import express from "express";
 import { Server } from "socket.io";
 import { GameService } from "./core/game-service.js";
+import { AIClueGenerator } from "./core/ai-clue-generator.js";
 import {
   aiActionSchema,
   createRoomSchema,
@@ -10,10 +11,12 @@ import {
   joinRoomSchema,
   reconnectSchema,
   roomActionSchema,
+  teamJoinSchema,
   startGameSchema,
   submitCluesSchema,
   submitGuessSchema
 } from "./core/schemas.js";
+import { WordServiceClient } from "./core/word-service-client.js";
 
 const app = express();
 app.use(cors());
@@ -31,6 +34,8 @@ const io = new Server(server, {
 });
 
 const gameService = new GameService();
+const wordServiceClient = new WordServiceClient();
+const aiClueGenerator = new AIClueGenerator(wordServiceClient);
 const broadcastJoinableRooms = (): void => {
   io.emit("rooms:update", gameService.listJoinableRooms());
 };
@@ -54,13 +59,8 @@ gameService.setOnRoomChanged((roomId) => {
   broadcastJoinableRooms();
 });
 
-gameService.setAgentInterface(async ({ code, secretWords }) => {
-  // Placeholder AI logic. Swap this for real agent implementation.
-  const clues = code.map((digit) => secretWords.find((word) => word.index === digit)?.zh.slice(0, 2) ?? "") as [
-    string,
-    string,
-    string
-  ];
+gameService.setAgentInterface(async (input) => {
+  const clues = await aiClueGenerator.generate(input);
   return { clues };
 });
 
@@ -144,6 +144,17 @@ io.on("connection", (socket) => {
     try {
       const parsed = startGameSchema.parse(payload);
       const room = gameService.startGame(parsed.roomId.toUpperCase(), parsed.playerId);
+      ack?.({ ok: true });
+      broadcastRoom(room.id);
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  socket.on("team:join", (payload, ack) => {
+    try {
+      const parsed = teamJoinSchema.parse(payload);
+      const room = gameService.joinTeam(parsed.roomId.toUpperCase(), parsed.playerId, parsed.teamId);
       ack?.({ ok: true });
       broadcastRoom(room.id);
     } catch (error) {
