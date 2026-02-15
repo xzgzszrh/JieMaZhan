@@ -137,6 +137,12 @@ export default function Page() {
   const lobbyPhaseSummary = "集结阶段 · 等待全员就位";
   const lobbyTaskSummary = isHost ? "你的指令：全员到齐后，启动本局" : "你的指令：待命，等待房主开局";
   const lobbyTeamsReady = Boolean(isLobbyScene && state && state.teams.every((team) => team.players.length === 2));
+  const lobbyTeamGridClass = useMemo(() => {
+    if (!isLobbyScene || !state) {
+      return "";
+    }
+    return state.teams.length >= 3 ? "lobby-team-grid" : "";
+  }, [isLobbyScene, state]);
   const lobbyTeamCheckMessage = useMemo(() => {
     if (!isLobbyScene || !state) {
       return "";
@@ -731,43 +737,48 @@ export default function Page() {
                   <p className="muted" style={{ margin: "0 0 8px" }}>
                     准备阶段可自由换队。仅在开始游戏时校验每队是否恰好 2 人。
                   </p>
-                  {state.teams.map((team) => (
-                    <div
-                      key={team.id}
-                      className={`team-status-row ${team.id === state.me.teamId ? "is-mine" : ""}`}
-                      style={
-                        {
-                          "--team-bg": (teamToneById.get(team.id) ?? TEAM_TONES[0]).bg,
-                          "--team-border": (teamToneById.get(team.id) ?? TEAM_TONES[0]).border,
-                          "--team-text": (teamToneById.get(team.id) ?? TEAM_TONES[0]).text,
-                          "--team-chip": (teamToneById.get(team.id) ?? TEAM_TONES[0]).chip
-                        } as CSSProperties
-                      }
-                    >
-                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                        <div className="row" style={{ alignItems: "center" }}>
-                          <span className="team-color-dot" />
-                          <strong>{team.label}</strong>
-                          <span className="muted">{team.players.length}/2</span>
+                  <div className={lobbyTeamGridClass}>
+                    {state.teams.map((team) => (
+                      <div
+                        key={team.id}
+                        className={`team-status-row ${team.id === state.me.teamId ? "is-mine" : ""}`}
+                        style={
+                          {
+                            "--team-bg": (teamToneById.get(team.id) ?? TEAM_TONES[0]).bg,
+                            "--team-border": (teamToneById.get(team.id) ?? TEAM_TONES[0]).border,
+                            "--team-text": (teamToneById.get(team.id) ?? TEAM_TONES[0]).text,
+                            "--team-chip": (teamToneById.get(team.id) ?? TEAM_TONES[0]).chip
+                          } as CSSProperties
+                        }
+                      >
+                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                          <div className="row" style={{ alignItems: "center" }}>
+                            <span className="team-color-dot" />
+                            <strong>{team.label}</strong>
+                            <span className="muted">{team.players.length}/2</span>
+                            <span className={`team-size-chip ${team.players.length === 2 ? "is-ok" : team.players.length > 2 ? "is-over" : "is-under"}`}>
+                              {team.players.length === 2 ? "可开局" : team.players.length > 2 ? "超编" : "待补"}
+                            </span>
+                          </div>
+                          <button
+                            className="btn secondary"
+                            style={{ width: "auto", minHeight: 34 }}
+                            disabled={team.id === state.me.teamId}
+                            onClick={async () => {
+                              await joinTeam(team.id);
+                            }}
+                          >
+                            {team.id === state.me.teamId ? "已在本队" : "加入"}
+                          </button>
                         </div>
-                        <button
-                          className="btn secondary"
-                          style={{ width: "auto", minHeight: 34 }}
-                          disabled={team.id === state.me.teamId}
-                          onClick={async () => {
-                            await joinTeam(team.id);
-                          }}
-                        >
-                          {team.id === state.me.teamId ? "已在本队" : "加入"}
-                        </button>
+                        <p className="muted" style={{ margin: "6px 0 0" }}>
+                          {team.players.length > 0
+                            ? team.players.map((player) => `${player.nickname}${player.online ? "" : "(离线)"}`).join(" · ")
+                            : "暂无成员"}
+                        </p>
                       </div>
-                      <p className="muted" style={{ margin: "6px 0 0" }}>
-                        {team.players.length > 0
-                          ? team.players.map((player) => `${player.nickname}${player.online ? "" : "(离线)"}`).join(" · ")
-                          : "暂无成员"}
-                      </p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </>
               ) : (
                 <>
