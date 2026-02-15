@@ -5,7 +5,7 @@ import time
 from flask import Blueprint, jsonify, request
 
 from .config import Settings
-from .schemas import parse_related_words_request
+from .schemas import parse_consistency_score_request, parse_related_words_request
 from .service import RelatedWordsService
 
 
@@ -36,5 +36,12 @@ def create_routes_blueprint(settings: Settings, related_words_service: RelatedWo
                 },
             }
         )
+
+    @bp.post("/api/v1/consistency-score")
+    def consistency_score():
+        payload = request.get_json(silent=True)
+        req = parse_consistency_score_request(payload)
+        score = related_words_service.calculate_consistency_score(req.words)
+        return jsonify({"score": score})
 
     return bp

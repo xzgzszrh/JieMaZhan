@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any
 
 from .errors import ApiError
@@ -66,3 +67,47 @@ class RelatedWordsService:
 
         sorted_items = sorted(dedup.items(), key=lambda item: item[1], reverse=True)[:k]
         return [NeighborItem(word=item_word, score=float(item_score)) for item_word, item_score in sorted_items]
+
+    def calculate_consistency_score(self, words: list[str]) -> float:
+        model = self._model_store.get_model_or_none()
+        if model is None:
+            reason = self._model_store.load_error or "model not loaded"
+            raise ApiError("MODEL_UNAVAILABLE", reason, 503)
+
+        vectors = [model.get_word_vector(word) for word in words]
+        pair_scores: list[float] = []
+
+        for i in range(len(vectors)):
+            for j in range(i + 1, len(vectors)):
+                score = self._cosine_similarity(vectors[i], vectors[j])
+                pair_scores.append(self._clamp_0_1(score))
+
+        if not pair_scores:
+            raise ApiError("INVALID_ARGUMENT", "at least two words are required", 400)
+
+        return float(sum(pair_scores) / len(pair_scores))
+
+    @staticmethod
+    def _cosine_similarity(vec_a: Any, vec_b: Any) -> float:
+        dot = 0.0
+        norm_a = 0.0
+        norm_b = 0.0
+        for a, b in zip(vec_a, vec_b):
+            a_val = float(a)
+            b_val = float(b)
+            dot += a_val * b_val
+            norm_a += a_val * a_val
+            norm_b += b_val * b_val
+
+        if norm_a == 0.0 or norm_b == 0.0:
+            return 0.0
+
+        return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
+
+    @staticmethod
+    def _clamp_0_1(value: float) -> float:
+        if value < 0.0:
+            return 0.0
+        if value > 1.0:
+            return 1.0
+        return value
