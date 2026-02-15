@@ -11,6 +11,7 @@ import {
   joinRoomSchema,
   reconnectSchema,
   roomActionSchema,
+  teamJoinSchema,
   startGameSchema,
   submitCluesSchema,
   submitGuessSchema
@@ -143,6 +144,17 @@ io.on("connection", (socket) => {
     try {
       const parsed = startGameSchema.parse(payload);
       const room = gameService.startGame(parsed.roomId.toUpperCase(), parsed.playerId);
+      ack?.({ ok: true });
+      broadcastRoom(room.id);
+    } catch (error) {
+      ack?.({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  socket.on("team:join", (payload, ack) => {
+    try {
+      const parsed = teamJoinSchema.parse(payload);
+      const room = gameService.joinTeam(parsed.roomId.toUpperCase(), parsed.playerId, parsed.teamId);
       ack?.({ ok: true });
       broadcastRoom(room.id);
     } catch (error) {

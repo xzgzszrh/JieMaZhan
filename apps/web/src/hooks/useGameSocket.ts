@@ -133,6 +133,13 @@ export const useGameSocket = () => {
     return emitWithAck("game:start", identity);
   };
 
+  const joinTeam = (teamId: string): Promise<void> => {
+    if (!identity) {
+      return Promise.reject(new Error("Not in room"));
+    }
+    return emitWithAck("team:join", { ...identity, teamId });
+  };
+
   const forceFinishGame = (): Promise<void> => {
     if (!identity) {
       return Promise.reject(new Error("Not in room"));
@@ -222,6 +229,7 @@ export const useGameSocket = () => {
     identity,
     createRoom,
     joinRoom,
+    joinTeam,
     startGame,
     forceFinishGame,
     leaveRoom,

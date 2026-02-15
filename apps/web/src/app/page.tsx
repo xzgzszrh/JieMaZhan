@@ -37,6 +37,7 @@ export default function Page() {
     debugMultiPlayer,
     createRoom,
     joinRoom,
+    joinTeam,
     startGame,
     forceFinishGame,
     leaveRoom,
@@ -135,6 +136,17 @@ export default function Page() {
 
   const lobbyPhaseSummary = "集结阶段 · 等待全员就位";
   const lobbyTaskSummary = isHost ? "你的指令：全员到齐后，启动本局" : "你的指令：待命，等待房主开局";
+  const lobbyTeamsReady = Boolean(isLobbyScene && state && state.teams.every((team) => team.players.length === 2));
+  const lobbyTeamCheckMessage = useMemo(() => {
+    if (!isLobbyScene || !state) {
+      return "";
+    }
+    const invalidTeams = state.teams.filter((team) => team.players.length !== 2);
+    if (invalidTeams.length === 0) {
+      return "队伍检测通过：每队 2 人，可开始。";
+    }
+    return `开局检测未通过：${invalidTeams.map((team) => `${team.label}(${team.players.length}/2)`).join("，")}。`;
+  }, [isLobbyScene, state]);
 
   const inGamePhaseSummary = state?.phase === "SPEAKING" ? "线索阶段 · 各队同步放话" : "锁码阶段 · 完成全部目标猜测";
   const inGameTaskSummary =
@@ -438,20 +450,6 @@ export default function Page() {
     if (!state) {
       return;
     }
-    if (isHost) {
-      const shouldDisband = await confirm({
-        title: "解散房间并返回主界面？",
-        description: "当前房间会被解散，所有成员将返回大厅。",
-        confirmText: "解散并返回",
-        cancelText: "再想想",
-        danger: true
-      });
-      if (!shouldDisband) {
-        return;
-      }
-      await disbandRoom();
-      return;
-    }
     await leaveRoom();
   };
 
@@ -660,11 +658,15 @@ export default function Page() {
               <p className="muted" style={{ margin: "8px 0 0" }}>
                 {lobbyTaskSummary}
               </p>
+              <p className="muted" style={{ margin: "6px 0 0", color: lobbyTeamsReady ? "var(--text-muted)" : "var(--warning)" }}>
+                {lobbyTeamCheckMessage}
+              </p>
               <div className="row" style={{ marginTop: 10 }}>
                 {isHost ? (
                   <>
                     <ActionButton
                       className="btn"
+                      disabled={!lobbyTeamsReady}
                       success={Boolean(actionSuccessState["start-game"])}
                       onClick={async () => {
                         await runActionWithSuccess("start-game", () => startGame());
@@ -724,122 +726,169 @@ export default function Page() {
                   </button>
                 )}
               </div>
-              {myOrderedTeam && (
-                <div className={isTwoTeamsLayout ? "teams-two-layout" : "teams-multi-layout"}>
-                  <div
-                    className={`team-status-row ${teamActionMetaById.get(myOrderedTeam.id)?.active ? "is-active" : ""} is-mine team-main-card`}
-                    style={
-                      {
-                        "--team-bg": (teamToneById.get(myOrderedTeam.id) ?? TEAM_TONES[0]).bg,
-                        "--team-border": (teamToneById.get(myOrderedTeam.id) ?? TEAM_TONES[0]).border,
-                        "--team-text": (teamToneById.get(myOrderedTeam.id) ?? TEAM_TONES[0]).text,
-                        "--team-chip": (teamToneById.get(myOrderedTeam.id) ?? TEAM_TONES[0]).chip
-                      } as CSSProperties
-                    }
-                  >
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                      <div className="row" style={{ alignItems: "center" }}>
-                        <span className="team-color-dot" />
-                        <strong>{myOrderedTeam.label}</strong>
-                      </div>
-                      <div className="row" style={{ alignItems: "center" }}>
-                        {teamActionMetaById.get(myOrderedTeam.id) && (
-                          <span className={`team-action-badge ${teamActionMetaById.get(myOrderedTeam.id)!.mine ? "is-mine" : ""}`}>
-                            {teamActionMetaById.get(myOrderedTeam.id)!.label}
-                          </span>
-                        )}
-                        <span className={`team-score ${scoreFeedbackByTeam[myOrderedTeam.id] ? "pop" : ""}`}>
-                          积分 {myOrderedTeam.score}
-                          {scoreFeedbackByTeam[myOrderedTeam.id] ? (
-                            <span className={`team-score-delta ${scoreFeedbackByTeam[myOrderedTeam.id] > 0 ? "plus" : "minus"}`}>
-                              {scoreFeedbackByTeam[myOrderedTeam.id] > 0 ? `+${scoreFeedbackByTeam[myOrderedTeam.id]}` : scoreFeedbackByTeam[myOrderedTeam.id]}
-                            </span>
-                          ) : null}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="muted" style={{ margin: "5px 0" }}>
-                      {myOrderedTeam.players.map((p) => `${p.nickname}${p.online ? "" : "(离线)"}`).join(" · ")}
-                    </p>
-                    {isInGameScene && (
-                      <div className="team-progress">
-                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                          <span className="muted">{getTaskProgress(myOrderedTeam.id).label}</span>
-                          <span className="muted">
-                            {getTaskProgress(myOrderedTeam.id).done}/{getTaskProgress(myOrderedTeam.id).total}
-                          </span>
-                        </div>
-                        <div className="progress-track mini team-progress-track">
-                          <div className="progress-fill team-progress-fill" style={{ width: `${getTaskProgressPercent(myOrderedTeam.id)}%` }} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {isTwoTeamsLayout && otherOrderedTeams[0] && (
+              {isLobbyScene ? (
+                <>
+                  <p className="muted" style={{ margin: "0 0 8px" }}>
+                    准备阶段可自由换队。仅在开始游戏时校验每队是否恰好 2 人。
+                  </p>
+                  {state.teams.map((team) => (
                     <div
-                      className="team-status-compact"
+                      key={team.id}
+                      className={`team-status-row ${team.id === state.me.teamId ? "is-mine" : ""}`}
                       style={
                         {
-                          "--team-bg": (teamToneById.get(otherOrderedTeams[0].id) ?? TEAM_TONES[0]).bg,
-                          "--team-border": (teamToneById.get(otherOrderedTeams[0].id) ?? TEAM_TONES[0]).border,
-                          "--team-text": (teamToneById.get(otherOrderedTeams[0].id) ?? TEAM_TONES[0]).text,
-                          "--team-chip": (teamToneById.get(otherOrderedTeams[0].id) ?? TEAM_TONES[0]).chip,
-                          "--team-progress": `${getTaskProgressPercent(otherOrderedTeams[0].id)}%`
+                          "--team-bg": (teamToneById.get(team.id) ?? TEAM_TONES[0]).bg,
+                          "--team-border": (teamToneById.get(team.id) ?? TEAM_TONES[0]).border,
+                          "--team-text": (teamToneById.get(team.id) ?? TEAM_TONES[0]).text,
+                          "--team-chip": (teamToneById.get(team.id) ?? TEAM_TONES[0]).chip
                         } as CSSProperties
                       }
                     >
-                      <strong>{otherOrderedTeams[0].label}</strong>
-                      <span className={`team-score ${scoreFeedbackByTeam[otherOrderedTeams[0].id] ? "pop" : ""}`}>
-                        积分 {otherOrderedTeams[0].score}
-                      </span>
-                      <div className="team-radial-wrap">
-                        <div className="team-radial">
-                          <span>{getTaskProgressPercent(otherOrderedTeams[0].id)}%</span>
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <div className="row" style={{ alignItems: "center" }}>
+                          <span className="team-color-dot" />
+                          <strong>{team.label}</strong>
+                          <span className="muted">{team.players.length}/2</span>
                         </div>
+                        <button
+                          className="btn secondary"
+                          style={{ width: "auto", minHeight: 34 }}
+                          disabled={team.id === state.me.teamId}
+                          onClick={async () => {
+                            await joinTeam(team.id);
+                          }}
+                        >
+                          {team.id === state.me.teamId ? "已在本队" : "加入"}
+                        </button>
                       </div>
+                      <p className="muted" style={{ margin: "6px 0 0" }}>
+                        {team.players.length > 0
+                          ? team.players.map((player) => `${player.nickname}${player.online ? "" : "(离线)"}`).join(" · ")
+                          : "暂无成员"}
+                      </p>
                     </div>
-                  )}
+                  ))}
+                </>
+              ) : (
+                <>
+                  {myOrderedTeam && (
+                    <div className={isTwoTeamsLayout ? "teams-two-layout" : "teams-multi-layout"}>
+                      <div
+                        className={`team-status-row ${teamActionMetaById.get(myOrderedTeam.id)?.active ? "is-active" : ""} is-mine team-main-card`}
+                        style={
+                          {
+                            "--team-bg": (teamToneById.get(myOrderedTeam.id) ?? TEAM_TONES[0]).bg,
+                            "--team-border": (teamToneById.get(myOrderedTeam.id) ?? TEAM_TONES[0]).border,
+                            "--team-text": (teamToneById.get(myOrderedTeam.id) ?? TEAM_TONES[0]).text,
+                            "--team-chip": (teamToneById.get(myOrderedTeam.id) ?? TEAM_TONES[0]).chip
+                          } as CSSProperties
+                        }
+                      >
+                        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                          <div className="row" style={{ alignItems: "center" }}>
+                            <span className="team-color-dot" />
+                            <strong>{myOrderedTeam.label}</strong>
+                          </div>
+                          <div className="row" style={{ alignItems: "center" }}>
+                            {teamActionMetaById.get(myOrderedTeam.id) && (
+                              <span className={`team-action-badge ${teamActionMetaById.get(myOrderedTeam.id)!.mine ? "is-mine" : ""}`}>
+                                {teamActionMetaById.get(myOrderedTeam.id)!.label}
+                              </span>
+                            )}
+                            <span className={`team-score ${scoreFeedbackByTeam[myOrderedTeam.id] ? "pop" : ""}`}>
+                              积分 {myOrderedTeam.score}
+                              {scoreFeedbackByTeam[myOrderedTeam.id] ? (
+                                <span className={`team-score-delta ${scoreFeedbackByTeam[myOrderedTeam.id] > 0 ? "plus" : "minus"}`}>
+                                  {scoreFeedbackByTeam[myOrderedTeam.id] > 0 ? `+${scoreFeedbackByTeam[myOrderedTeam.id]}` : scoreFeedbackByTeam[myOrderedTeam.id]}
+                                </span>
+                              ) : null}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="muted" style={{ margin: "5px 0" }}>
+                          {myOrderedTeam.players.map((p) => `${p.nickname}${p.online ? "" : "(离线)"}`).join(" · ")}
+                        </p>
+                        {isInGameScene && (
+                          <div className="team-progress">
+                            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                              <span className="muted">{getTaskProgress(myOrderedTeam.id).label}</span>
+                              <span className="muted">
+                                {getTaskProgress(myOrderedTeam.id).done}/{getTaskProgress(myOrderedTeam.id).total}
+                              </span>
+                            </div>
+                            <div className="progress-track mini team-progress-track">
+                              <div className="progress-fill team-progress-fill" style={{ width: `${getTaskProgressPercent(myOrderedTeam.id)}%` }} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
-                  {!isTwoTeamsLayout && otherOrderedTeams.length > 0 && (
-                    <div className="teams-others-grid">
-                      {otherOrderedTeams.map((team) => (
+                      {isTwoTeamsLayout && otherOrderedTeams[0] && (
                         <div
-                          key={team.id}
-                          className="team-status-mini"
+                          className="team-status-compact"
                           style={
                             {
-                              "--team-bg": (teamToneById.get(team.id) ?? TEAM_TONES[0]).bg,
-                              "--team-border": (teamToneById.get(team.id) ?? TEAM_TONES[0]).border,
-                              "--team-text": (teamToneById.get(team.id) ?? TEAM_TONES[0]).text,
-                              "--team-progress": `${getTaskProgressPercent(team.id)}%`
+                              "--team-bg": (teamToneById.get(otherOrderedTeams[0].id) ?? TEAM_TONES[0]).bg,
+                              "--team-border": (teamToneById.get(otherOrderedTeams[0].id) ?? TEAM_TONES[0]).border,
+                              "--team-text": (teamToneById.get(otherOrderedTeams[0].id) ?? TEAM_TONES[0]).text,
+                              "--team-chip": (teamToneById.get(otherOrderedTeams[0].id) ?? TEAM_TONES[0]).chip,
+                              "--team-progress": `${getTaskProgressPercent(otherOrderedTeams[0].id)}%`
                             } as CSSProperties
                           }
                         >
-                          <span className={`team-score ${scoreFeedbackByTeam[team.id] ? "pop" : ""}`}>积分 {team.score}</span>
-                          <div className="team-radial mini">
-                            <span>{getTaskProgressPercent(team.id)}%</span>
+                          <strong>{otherOrderedTeams[0].label}</strong>
+                          <span className={`team-score ${scoreFeedbackByTeam[otherOrderedTeams[0].id] ? "pop" : ""}`}>
+                            积分 {otherOrderedTeams[0].score}
+                          </span>
+                          <div className="team-radial-wrap">
+                            <div className="team-radial">
+                              <span>{getTaskProgressPercent(otherOrderedTeams[0].id)}%</span>
+                            </div>
                           </div>
                         </div>
-                      ))}
+                      )}
+
+                      {!isTwoTeamsLayout && otherOrderedTeams.length > 0 && (
+                        <div className="teams-others-grid">
+                          {otherOrderedTeams.map((team) => (
+                            <div
+                              key={team.id}
+                              className="team-status-mini"
+                              style={
+                                {
+                                  "--team-bg": (teamToneById.get(team.id) ?? TEAM_TONES[0]).bg,
+                                  "--team-border": (teamToneById.get(team.id) ?? TEAM_TONES[0]).border,
+                                  "--team-text": (teamToneById.get(team.id) ?? TEAM_TONES[0]).text,
+                                  "--team-progress": `${getTaskProgressPercent(team.id)}%`
+                                } as CSSProperties
+                              }
+                            >
+                              <span className={`team-score ${scoreFeedbackByTeam[team.id] ? "pop" : ""}`}>积分 {team.score}</span>
+                              <div className="team-radial mini">
+                                <span>{getTaskProgressPercent(team.id)}%</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
-              )}
-              {state.mySecretWords && (
-                <div style={{ borderTop: "1px solid var(--line)", paddingTop: 8, marginTop: 8 }}>
-                  <p className="muted" style={{ margin: 0 }}>
-                    你的队伍词条
-                  </p>
-                  <div className="secret-grid">
-                    {state.mySecretWords.map((word) => (
-                      <div key={word.index} className="secret-item">
-                        <span>{word.index}</span>
-                        <span>{word.zh}</span>
+                  {state.mySecretWords && (
+                    <div style={{ borderTop: "1px solid var(--line)", paddingTop: 8, marginTop: 8 }}>
+                      <p className="muted" style={{ margin: 0 }}>
+                        你的队伍词条
+                      </p>
+                      <div className="secret-grid">
+                        {state.mySecretWords.map((word) => (
+                          <div key={word.index} className="secret-item">
+                            <span>{word.index}</span>
+                            <span>{word.zh}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  )}
+                </>
               )}
             </section>
           )}

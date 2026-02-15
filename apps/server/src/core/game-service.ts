@@ -57,6 +57,21 @@ export class GameService {
   createRoom(hostSocketId: string, nickname: string, targetPlayerCount: 4 | 6 | 8): { room: GameRoom; player: Player } {
     const playerId = randomUUID();
     const roomId = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const teamCount = targetPlayerCount / 2;
+    const teamOrder: TeamId[] = [];
+    const teams: Record<TeamId, Team> = {};
+    for (let i = 0; i < teamCount; i += 1) {
+      const teamId = `T${i + 1}`;
+      teamOrder.push(teamId);
+      teams[teamId] = {
+        id: teamId,
+        label: `Team ${String.fromCharCode(65 + i)}`,
+        playerIds: [],
+        secretWords: [],
+        score: 0
+      };
+    }
+
     const player: Player = {
       id: playerId,
       socketId: hostSocketId,
@@ -72,8 +87,8 @@ export class GameService {
       status: "LOBBY",
       round: 1,
       players: { [playerId]: player },
-      teams: {},
-      teamOrder: [],
+      teams,
+      teamOrder,
       currentAttempts: [],
       attemptHistory: [],
       deductionRows: [],
@@ -109,7 +124,7 @@ export class GameService {
     if (room.status !== "LOBBY" && room.status !== "FINISHED") {
       throw new Error("Cannot leave during active game");
     }
-    if (room.hostPlayerId === playerId) {
+    if (room.status === "LOBBY" && room.hostPlayerId === playerId) {
       throw new Error("Host must disband room");
     }
     const player = room.players[playerId];
@@ -124,6 +139,21 @@ export class GameService {
       }
     }
     delete room.players[playerId];
+
+    if (room.hostPlayerId === playerId) {
+      const nextHost = Object.values(room.players).sort((a, b) => a.joinedAt - b.joinedAt)[0];
+      if (nextHost) {
+        room.hostPlayerId = nextHost.id;
+      }
+    }
+
+    if (Object.keys(room.players).length === 0) {
+      this.clearAllTimers(room);
+      this.rooms.delete(room.id);
+      this.notifyRoomChanged(room.id);
+      return { roomId: room.id };
+    }
+
     this.notifyRoomChanged(room.id);
     return { roomId: room.id };
   }
@@ -156,6 +186,39 @@ export class GameService {
     return room;
   }
 
+  joinTeam(roomId: string, playerId: string, teamId: string): GameRoom {
+    const room = this.getRoomOrThrow(roomId);
+    if (room.status !== "LOBBY") {
+      throw new Error("Team can only be changed in lobby");
+    }
+
+    const player = room.players[playerId];
+    if (!player) {
+      throw new Error("Player not found");
+    }
+
+    const targetTeam = room.teams[teamId];
+    if (!targetTeam) {
+      throw new Error("Team not found");
+    }
+
+    if (player.teamId) {
+      const currentTeam = room.teams[player.teamId];
+      if (currentTeam) {
+        currentTeam.playerIds = currentTeam.playerIds.filter((id) => id !== player.id);
+      }
+    }
+
+    player.teamId = teamId;
+    player.seatIndex = undefined;
+    if (!targetTeam.playerIds.includes(player.id)) {
+      targetTeam.playerIds.push(player.id);
+    }
+
+    this.notifyRoomChanged(room.id);
+    return room;
+  }
+
   startGame(roomId: string, callerPlayerId: string): GameRoom {
     const room = this.getRoomOrThrow(roomId);
     if (room.hostPlayerId !== callerPlayerId) {
@@ -170,27 +233,29 @@ export class GameService {
       throw new Error("Player count mismatch");
     }
 
-    const teamCount = room.targetPlayerCount / 2;
-    for (let i = 0; i < teamCount; i += 1) {
-      const teamId = `T${i + 1}`;
-      room.teamOrder.push(teamId);
-      room.teams[teamId] = {
-        id: teamId,
-        label: `Team ${String.fromCharCode(65 + i)}`,
-        playerIds: [],
-        secretWords: pickSecretWords(i + Math.floor(Math.random() * 100)),
-        score: 0
-      };
+    for (const [teamIndex, teamId] of room.teamOrder.entries()) {
+      const team = room.teams[teamId];
+      if (!team) {
+        throw new Error(`Team config missing: ${teamId}`);
+      }
+      if (team.playerIds.length !== 2) {
+        throw new Error(`${team.label} 当前人数为 ${team.playerIds.length}，开局时每队必须恰好 2 人`);
+      }
+      team.secretWords = pickSecretWords(teamIndex + Math.floor(Math.random() * 100));
+      team.score = 0;
     }
 
-    const sortedPlayers = Object.values(room.players).sort((a, b) => a.joinedAt - b.joinedAt);
-    sortedPlayers.forEach((player, index) => {
-      const teamId = room.teamOrder[Math.floor(index / 2)];
-      const team = requireTeam(room, teamId);
-      player.teamId = teamId;
-      player.seatIndex = index % 2;
-      team.playerIds.push(player.id);
-    });
+    for (const player of Object.values(room.players)) {
+      if (!player.teamId || !room.teams[player.teamId]) {
+        throw new Error("存在未分配队伍的玩家，无法开始");
+      }
+      const team = room.teams[player.teamId];
+      const seatIndex = team.playerIds.indexOf(player.id);
+      if (seatIndex < 0 || seatIndex > 1) {
+        throw new Error("队伍座位信息异常，无法开始");
+      }
+      player.seatIndex = seatIndex;
+    }
 
     room.status = "IN_GAME";
     room.round = 1;
