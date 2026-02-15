@@ -50,7 +50,7 @@ python3.11 wordscorrelation/correlate_words.py 苹果 香蕉 水果 --neighbors 
 
 ## 压缩模型（推荐）
 
-原始 `cc.zh.300.bin` 很大，可以量化成更小的 `cc.zh.300.ftz`：
+原始 `cc.zh.300.bin` 很大，推荐做“降维压缩”（300 维降到更低维）：
 
 ```bash
 python3.11 wordscorrelation/compress_fasttext_model.py
@@ -59,13 +59,14 @@ python3.11 wordscorrelation/compress_fasttext_model.py
 常用参数：
 
 ```bash
-# 更小体积（通常会有更多精度损失）
-python3.11 wordscorrelation/compress_fasttext_model.py --dsub 1
+# 平衡体积与效果（推荐）
+python3.11 wordscorrelation/compress_fasttext_model.py --dim 100
 
-# 限制词表（进一步减小体积）
-python3.11 wordscorrelation/compress_fasttext_model.py --cutoff 300000
+# 更小体积（可能有更明显精度损失）
+python3.11 wordscorrelation/compress_fasttext_model.py --dim 50
 ```
 
 说明：
-- `correlate_words.py` 默认会优先使用 `wordscorrelation/data/models/cc.zh.300.ftz`。
-- 如果没有 `.ftz`，会自动回退到 `.bin`。
+- fastText 的 `quantize()` 仅支持 supervised 模型，不适用于 `cc.zh.300.bin` 这种词向量模型。
+- 当前脚本输出为降维后的 `wordscorrelation/data/models/cc.zh.100.bin`（可通过 `--output` 改名）。
+- `correlate_words.py` 默认会优先使用 `cc.zh.100.bin`，没有则回退到 `cc.zh.300.bin`。
