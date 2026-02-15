@@ -44,8 +44,7 @@ export default function Page() {
     disbandRoom,
     submitClues,
     submitGuess,
-    aiAction,
-    refreshJoinableRooms
+    aiAction
   } = useGameSocket();
   const [nickname, setNickname] = useState("");
   const [nicknameDraft, setNicknameDraft] = useState("");
@@ -589,9 +588,6 @@ export default function Page() {
               <section className="card" style={{ marginTop: 10 }}>
                 <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                   <h2 className="title">可用房间</h2>
-                  <button className="btn secondary" style={{ width: "auto", minHeight: 34 }} onClick={() => refreshJoinableRooms()}>
-                    刷新
-                  </button>
                 </div>
 
                 {availableRooms.length === 0 && <p className="muted">当前没有可加入的房间。</p>}
