@@ -528,15 +528,6 @@ export default function Page() {
 
   return (
     <main className="main-wrap">
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <p className="muted" style={{ margin: 0 }}>
-          调试模式：{debugMultiPlayer ? "开（多标签独立身份）" : "关（多标签共享身份）"}
-        </p>
-        <button className="btn secondary" style={{ width: "auto", minHeight: 34 }} onClick={toggleDebugMode}>
-          {debugMultiPlayer ? "关闭调试" : "开启调试"}
-        </button>
-      </div>
-
       {!state && (
         <>
           <p className="muted">Decrypto Online</p>
@@ -920,7 +911,7 @@ export default function Page() {
             </InfoDialog>
           )}
 
-          {state.status === "IN_GAME" && (
+          {state.status === "IN_GAME" && !(canSubmitClues && mySpeakingAttempt) && (
             <section className="card" style={{ marginTop: 10 }}>
               <h2 className="title">猜测面板</h2>
               {state.phase === "SPEAKING" && (
@@ -1043,6 +1034,15 @@ export default function Page() {
           </div>
         </>
       )}
+
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+        <p className="muted" style={{ margin: 0 }}>
+          调试模式：{debugMultiPlayer ? "开（多标签独立身份）" : "关（多标签共享身份）"}
+        </p>
+        <button className="btn secondary" style={{ width: "auto", minHeight: 34 }} onClick={toggleDebugMode}>
+          {debugMultiPlayer ? "关闭调试" : "开启调试"}
+        </button>
+      </div>
 
       {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
       {confirmDialogNode}
