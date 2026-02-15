@@ -19,6 +19,11 @@ export type GameView = {
   };
   me: { id: string; nickname: string; teamId?: string; isHost: boolean };
   mySecretWords?: Array<{ index: 1 | 2 | 3 | 4; zh: string }>;
+  revealedSecretWords?: Array<{
+    teamId: string;
+    teamLabel: string;
+    words: Array<{ index: 1 | 2 | 3 | 4; zh: string }>;
+  }>;
   teams: TeamView[];
   currentAttempts: Array<{
     id: string;

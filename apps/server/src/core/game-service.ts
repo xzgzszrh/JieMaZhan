@@ -348,6 +348,17 @@ export class GameService {
         isHost: me.id === room.hostPlayerId
       },
       mySecretWords: me.teamId ? room.teams[me.teamId]?.secretWords : undefined,
+      revealedSecretWords:
+        room.status === "FINISHED"
+          ? room.teamOrder.map((teamId) => {
+              const team = room.teams[teamId];
+              return {
+                teamId: team.id,
+                teamLabel: team.label,
+                words: team.secretWords
+              };
+            })
+          : undefined,
       teams,
       currentAttempts,
       deductionRows: room.deductionRows,
