@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useGameSocket } from "@/hooks/useGameSocket";
+import { ActionButton } from "@/components/ActionButton";
 
 const DIGITS = [1, 2, 3, 4] as const;
 type GuessTuple = [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
@@ -31,6 +32,10 @@ export default function Page() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(60);
   const [disconnectSecondsLeft, setDisconnectSecondsLeft] = useState(30);
+  const [roundPulse, setRoundPulse] = useState(false);
+  const [actionSuccessState, setActionSuccessState] = useState<Record<string, boolean>>({});
+  const prevRoundRef = useRef<number | undefined>(undefined);
+  const successTimersRef = useRef<Record<string, number>>({});
 
   const myTeam = useMemo(() => state?.teams.find((t) => t.id === state.me.teamId), [state]);
   const myTeamId = state?.me.teamId;
@@ -197,6 +202,17 @@ export default function Page() {
   };
 
   const hasNickname = nickname.trim().length > 0;
+  const speakingLeftPercent = Math.max(0, Math.min(100, Math.round((secondsLeft / 60) * 100)));
+  const speakingWarning = Boolean(state?.status === "IN_GAME" && state.phase === "SPEAKING" && secondsLeft <= 10);
+  const stageCardKey = useMemo(() => {
+    if (!state) {
+      return "no-state";
+    }
+    if (state.status === "IN_GAME") {
+      return `${state.status}-${state.phase}-${state.round}`;
+    }
+    return `${state.status}-${state.round}`;
+  }, [state]);
 
   useEffect(() => {
     const storage = debugMultiPlayer ? window.sessionStorage : window.localStorage;
@@ -262,6 +278,19 @@ export default function Page() {
     return () => window.clearInterval(timer);
   }, [state?.disconnectState, state?.status]);
 
+  useEffect(() => {
+    if (!state?.round) {
+      return;
+    }
+    if (prevRoundRef.current !== undefined && prevRoundRef.current !== state.round) {
+      setRoundPulse(true);
+      const timer = window.setTimeout(() => setRoundPulse(false), 560);
+      prevRoundRef.current = state.round;
+      return () => window.clearTimeout(timer);
+    }
+    prevRoundRef.current = state.round;
+  }, [state?.round]);
+
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     if (!hasNickname) {
@@ -304,12 +333,30 @@ export default function Page() {
     setClues(aiClues);
   };
 
-  const submitMyGuess = async (targetTeamId: string) => {
+  const flashActionSuccess = (actionKey: string, durationMs = 1100) => {
+    const existing = successTimersRef.current[actionKey];
+    if (existing) {
+      window.clearTimeout(existing);
+    }
+    setActionSuccessState((prev) => ({ ...prev, [actionKey]: true }));
+    successTimersRef.current[actionKey] = window.setTimeout(() => {
+      setActionSuccessState((prev) => ({ ...prev, [actionKey]: false }));
+      delete successTimersRef.current[actionKey];
+    }, durationMs);
+  };
+
+  const runActionWithSuccess = async (actionKey: string, action: () => Promise<unknown>) => {
+    await action();
+    flashActionSuccess(actionKey);
+  };
+
+  const submitMyGuess = async (targetTeamId: string): Promise<boolean> => {
     const guess = getGuessForTarget(targetTeamId);
     if (new Set(guess).size !== 3) {
-      return;
+      return false;
     }
     await submitGuess(targetTeamId, guess);
+    return true;
   };
 
   const returnToHome = async () => {
@@ -336,6 +383,12 @@ export default function Page() {
     const nextQuery = params.toString();
     window.location.search = nextQuery ? `?${nextQuery}` : "";
   };
+
+  useEffect(() => {
+    return () => {
+      Object.values(successTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+    };
+  }, []);
 
   return (
     <main className="main-wrap">
@@ -435,10 +488,10 @@ export default function Page() {
       {state && (
         <>
           {isFinished ? (
-            <section className="card" style={{ marginTop: 12 }}>
+            <section key={`stage-card-${stageCardKey}`} className="card stage-card" style={{ marginTop: 12 }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <strong>{resultTitle}</strong>
-                <span className="badge">Round {state.round}</span>
+                <span className={`badge round-badge ${roundPulse ? "pulse" : ""}`}>Round {state.round}</span>
               </div>
               <p className="muted" style={{ margin: "6px 0 0" }}>
                 {resultDescription}
@@ -451,10 +504,10 @@ export default function Page() {
               </div>
             </section>
           ) : (
-            <section className="card" style={{ marginTop: 12 }}>
+            <section key={`stage-card-${stageCardKey}`} className="card stage-card" style={{ marginTop: 12 }}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                 <strong>你在 {myTeamLabel}</strong>
-                <span className="badge">Round {state.round}</span>
+                <span className={`badge round-badge ${roundPulse ? "pulse" : ""}`}>Round {state.round}</span>
               </div>
               <p className="muted" style={{ margin: "6px 0 0" }}>
                 {phaseSummary}
@@ -462,6 +515,17 @@ export default function Page() {
               <p className="muted" style={{ margin: "8px 0 0" }}>
                 {taskSummary}
               </p>
+              {state.status === "IN_GAME" && state.phase === "SPEAKING" && (
+                <div className={`countdown-block ${speakingWarning ? "warning pulse" : ""}`}>
+                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="muted">发言倒计时</span>
+                    <span className="countdown-seconds">{secondsLeft}s</span>
+                  </div>
+                  <div className={`countdown-track ${speakingWarning ? "warning" : ""}`}>
+                    <div className={`countdown-fill ${speakingWarning ? "warning" : ""}`} style={{ width: `${speakingLeftPercent}%` }} />
+                  </div>
+                </div>
+              )}
               {state.disconnectState && (
                 <p style={{ margin: "8px 0 0", color: "var(--warning)" }}>
                   断线提醒：{disconnectedNicknames.join("、")} 已离线，{disconnectSecondsLeft}s 内未重连将自动结束对局。
@@ -547,9 +611,15 @@ export default function Page() {
                 <div className="row" style={{ marginTop: 10 }}>
                   {isHost ? (
                     <>
-                      <button className="btn" onClick={() => startGame()}>
-                        开始游戏
-                      </button>
+                      <ActionButton
+                        className="btn"
+                        success={Boolean(actionSuccessState["start-game"])}
+                        onClick={async () => {
+                          await runActionWithSuccess("start-game", () => startGame());
+                        }}
+                      >
+                        {actionSuccessState["start-game"] ? "匹配已启动" : "开始游戏"}
+                      </ActionButton>
                       <button
                         className="btn secondary"
                         onClick={async () => {
@@ -636,9 +706,15 @@ export default function Page() {
                 <button className="btn secondary" onClick={fillByAI}>
                   AI 生成线索
                 </button>
-                <button className="btn" onClick={() => submitClues(clues)}>
-                  提交发言
-                </button>
+                <ActionButton
+                  className="btn"
+                  success={Boolean(actionSuccessState["submit-clues"])}
+                  onClick={async () => {
+                    await runActionWithSuccess("submit-clues", () => submitClues(clues));
+                  }}
+                >
+                  {actionSuccessState["submit-clues"] ? "发言已锁定" : "提交发言"}
+                </ActionButton>
               </div>
             </section>
           )}
@@ -682,9 +758,24 @@ export default function Page() {
                         </select>
                       ))}
                     </div>
-                    <button className="btn" style={{ marginTop: 8 }} disabled={submitted} onClick={() => submitMyGuess(attempt.targetTeamId)}>
-                      {submitted ? "已提交" : "提交猜测"}
-                    </button>
+                    <ActionButton
+                      className="btn"
+                      style={{ marginTop: 8 }}
+                      disabled={submitted}
+                      success={Boolean(actionSuccessState[`submit-guess-${attempt.targetTeamId}`])}
+                      onClick={async () => {
+                        const ok = await submitMyGuess(attempt.targetTeamId);
+                        if (ok) {
+                          flashActionSuccess(`submit-guess-${attempt.targetTeamId}`);
+                        }
+                      }}
+                    >
+                      {submitted
+                        ? "已提交"
+                        : actionSuccessState[`submit-guess-${attempt.targetTeamId}`]
+                          ? "锁定成功"
+                          : "提交猜测"}
+                    </ActionButton>
                   </div>
                 );
               })}

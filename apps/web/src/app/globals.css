@@ -102,6 +102,7 @@ select {
   color: #fff8ef;
   font-weight: 700;
   border-color: #cb8b46;
+  transition: transform 120ms ease, filter 160ms ease, box-shadow 200ms ease, background 220ms ease, border-color 220ms ease;
 }
 
 .btn.secondary {
@@ -112,6 +113,24 @@ select {
 
 .btn:hover {
   filter: brightness(0.98);
+}
+
+.btn:active {
+  transform: translateY(1px) scale(0.987);
+}
+
+.btn:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+  filter: saturate(0.76);
+  transform: none;
+}
+
+.btn.is-success {
+  background: linear-gradient(135deg, #88be8d 0%, #6da983 100%);
+  border-color: #649673;
+  color: #f7fff7;
+  box-shadow: 0 0 0 3px rgba(118, 170, 134, 0.2);
 }
 
 .secret-grid {
@@ -189,6 +208,14 @@ select {
   border-radius: 999px;
 }
 
+.stage-card {
+  animation: stage-enter 340ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.round-badge.pulse {
+  animation: round-pop 560ms ease;
+}
+
 .progress-block {
   margin-top: 10px;
   padding: 10px;
@@ -239,5 +266,41 @@ select {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes stage-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes round-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.08);
+    border-color: var(--accent);
+    color: var(--accent-strong);
+    background: rgba(223, 176, 117, 0.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .stage-card,
+  .round-badge.pulse,
+  .btn {
+    animation: none !important;
+    transition: none !important;
   }
 }
