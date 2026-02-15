@@ -3,6 +3,7 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useGameSocket } from "@/hooks/useGameSocket";
 import { ActionButton } from "@/components/ActionButton";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 const DIGITS = [1, 2, 3, 4] as const;
 type GuessTuple = [1 | 2 | 3 | 4, 1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
@@ -48,6 +49,7 @@ export default function Page() {
   const successTimersRef = useRef<Record<string, number>>({});
   const prevScoresRef = useRef<Record<string, number>>({});
   const scoreFeedbackTimersRef = useRef<Record<string, number>>({});
+  const { confirm, confirmDialogNode } = useConfirmDialog();
 
   const myTeam = useMemo(() => state?.teams.find((t) => t.id === state.me.teamId), [state]);
   const myTeamId = state?.me.teamId;
@@ -427,7 +429,14 @@ export default function Page() {
       return;
     }
     if (isHost) {
-      if (!window.confirm("返回主界面将解散房间，是否继续？")) {
+      const shouldDisband = await confirm({
+        title: "解散房间并返回主界面？",
+        description: "当前房间会被解散，所有成员将返回大厅。",
+        confirmText: "解散并返回",
+        cancelText: "再想想",
+        danger: true
+      });
+      if (!shouldDisband) {
         return;
       }
       await disbandRoom();
@@ -692,7 +701,14 @@ export default function Page() {
                   <button
                     className="btn secondary"
                     onClick={async () => {
-                      if (!window.confirm("确定强制结束当前对局吗？")) {
+                      const shouldForceFinish = await confirm({
+                        title: "强制结束当前对局？",
+                        description: "该操作会立即结束本局且不可撤销。",
+                        confirmText: "立即结束",
+                        cancelText: "取消",
+                        danger: true
+                      });
+                      if (!shouldForceFinish) {
                         return;
                       }
                       await forceFinishGame();
@@ -718,7 +734,14 @@ export default function Page() {
                       <button
                         className="btn secondary"
                         onClick={async () => {
-                          if (!window.confirm("确定解散房间吗？")) {
+                          const shouldDisband = await confirm({
+                            title: "确定解散房间？",
+                            description: "房间解散后，所有成员会返回大厅。",
+                            confirmText: "确认解散",
+                            cancelText: "取消",
+                            danger: true
+                          });
+                          if (!shouldDisband) {
                             return;
                           }
                           await disbandRoom();
@@ -731,7 +754,13 @@ export default function Page() {
                     <button
                       className="btn secondary"
                       onClick={async () => {
-                        if (!window.confirm("确定退出房间吗？")) {
+                        const shouldLeave = await confirm({
+                          title: "确定退出房间？",
+                          description: "你将返回大厅，可再次加入该房间。",
+                          confirmText: "确认退出",
+                          cancelText: "取消"
+                        });
+                        if (!shouldLeave) {
                           return;
                         }
                         await leaveRoom();
@@ -929,34 +958,45 @@ export default function Page() {
                 <span className="muted">{drawerOpen ? "收起" : "展开"}</span>
               </header>
               <div className="drawer-body">
-                {deductionByTeam.map((group) => (
-                  <div key={group.teamId} style={{ marginBottom: 14 }}>
-                    <p className="muted" style={{ margin: "0 0 6px" }}>
-                      {group.teamLabel}
-                      {group.teamId === state.me.teamId ? "（己方）" : "（对方）"}
-                    </p>
-                    <table className="record-table">
-                      <thead>
-                        <tr>
-                          <th>1</th>
-                          <th>2</th>
-                          <th>3</th>
-                          <th>4</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.rows.map((row, index) => (
-                          <tr key={`${group.teamId}-${row.round}-${index}`}>
-                            <td>{row.byNumber[1]}</td>
-                            <td>{row.byNumber[2]}</td>
-                            <td>{row.byNumber[3]}</td>
-                            <td>{row.byNumber[4]}</td>
+                {deductionByTeam.map((group) => {
+                  const latestRound = Math.max(...group.rows.map((row) => row.round));
+                  return (
+                    <div key={group.teamId} className="record-team-block">
+                      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                        <p className="muted" style={{ margin: "0 0 6px" }}>
+                          {group.teamLabel}
+                          {group.teamId === state.me.teamId ? "（己方）" : "（对方）"}
+                        </p>
+                        <span className="record-round-chip">最新 R{latestRound}</span>
+                      </div>
+                      <table className="record-table">
+                        <thead>
+                          <tr>
+                            <th>1</th>
+                            <th>2</th>
+                            <th>3</th>
+                            <th>4</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
+                        </thead>
+                        <tbody>
+                          {group.rows.map((row, index) => {
+                            const age = latestRound - row.round;
+                            const rowClassName = age === 0 ? "is-latest" : age <= 2 ? "is-recent" : "is-older";
+
+                            return (
+                              <tr key={`${group.teamId}-${row.round}-${index}`} className={rowClassName}>
+                                <td>{row.byNumber[1]}</td>
+                                <td>{row.byNumber[2]}</td>
+                                <td>{row.byNumber[3]}</td>
+                                <td>{row.byNumber[4]}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
                 {deductionByTeam.length === 0 && <p className="muted">尚无记录。</p>}
               </div>
             </section>
@@ -965,6 +1005,7 @@ export default function Page() {
       )}
 
       {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+      {confirmDialogNode}
     </main>
   );
 }

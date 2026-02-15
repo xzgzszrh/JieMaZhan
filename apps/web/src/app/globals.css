@@ -111,6 +111,12 @@ select {
   border-color: var(--line);
 }
 
+.btn.danger {
+  background: linear-gradient(135deg, #cf715c 0%, #b74b45 100%);
+  border-color: #ad5347;
+  color: #fff6f3;
+}
+
 .btn:hover {
   filter: brightness(0.98);
 }
@@ -237,17 +243,20 @@ select {
   right: 0;
   bottom: 0;
   transform: translateY(calc(100% - 58px));
-  transition: transform 220ms ease;
+  opacity: 0.96;
+  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 220ms ease;
   background: var(--surface);
   border-top: 1px solid var(--line);
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
   max-height: 72dvh;
   z-index: 20;
+  box-shadow: 0 -10px 24px rgba(130, 97, 53, 0.16);
 }
 
 .drawer.open {
   transform: translateY(0);
+  opacity: 1;
 }
 
 .drawer-header {
@@ -262,6 +271,46 @@ select {
   padding: 10px 12px 16px;
 }
 
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(61, 47, 29, 0.35);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.confirm-panel {
+  width: min(460px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(180deg, #fff7eb 0%, #f4e7cd 100%);
+  box-shadow: 0 20px 40px rgba(112, 82, 46, 0.24);
+  animation: confirm-enter 180ms ease;
+}
+
+.confirm-title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.confirm-description {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.confirm-actions {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .record-table {
   width: 100%;
   border-collapse: collapse;
@@ -274,6 +323,41 @@ select {
   padding: 8px 4px;
   text-align: center;
   font-size: 12px;
+}
+
+.record-team-block {
+  margin-bottom: 14px;
+  padding: 8px;
+  border: 1px solid #ddcbb0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 250, 241, 0.84) 0%, rgba(248, 236, 208, 0.66) 100%);
+}
+
+.record-round-chip {
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid #d7b88b;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #84592c;
+  background: #f6dfbb;
+}
+
+.record-table tbody tr {
+  transition: background 180ms ease, opacity 180ms ease;
+}
+
+.record-table tbody tr.is-latest td {
+  background: rgba(242, 198, 130, 0.24);
+  font-weight: 700;
+}
+
+.record-table tbody tr.is-recent td {
+  background: rgba(245, 224, 184, 0.18);
+}
+
+.record-table tbody tr.is-older td {
+  opacity: 0.72;
 }
 
 .badge {
@@ -396,6 +480,17 @@ select {
   }
 }
 
+@keyframes confirm-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @keyframes stage-enter {
   from {
     opacity: 0;
@@ -473,6 +568,10 @@ select {
 
   .team-score.pop,
   .team-score-delta {
+    animation: none !important;
+  }
+
+  .confirm-panel {
     animation: none !important;
   }
 }
