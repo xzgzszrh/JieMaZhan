@@ -515,17 +515,6 @@ export default function Page() {
               <p className="muted" style={{ margin: "8px 0 0" }}>
                 {taskSummary}
               </p>
-              {state.status === "IN_GAME" && state.phase === "SPEAKING" && (
-                <div className={`countdown-block ${speakingWarning ? "warning pulse" : ""}`}>
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                    <span className="muted">发言倒计时</span>
-                    <span className="countdown-seconds">{secondsLeft}s</span>
-                  </div>
-                  <div className={`countdown-track ${speakingWarning ? "warning" : ""}`}>
-                    <div className={`countdown-fill ${speakingWarning ? "warning" : ""}`} style={{ width: `${speakingLeftPercent}%` }} />
-                  </div>
-                </div>
-              )}
               {state.disconnectState && (
                 <p style={{ margin: "8px 0 0", color: "var(--warning)" }}>
                   断线提醒：{disconnectedNicknames.join("、")} 已离线，{disconnectSecondsLeft}s 内未重连将自动结束对局。
@@ -683,6 +672,15 @@ export default function Page() {
           {canSubmitClues && mySpeakingAttempt && (
             <section className="card" style={{ marginTop: 10 }}>
               <h2 className="title">发言面板</h2>
+              <div className={`countdown-block ${speakingWarning ? "warning pulse" : ""}`}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <span className="muted">发言倒计时</span>
+                  <span className="countdown-seconds">{secondsLeft}s</span>
+                </div>
+                <div className={`countdown-track ${speakingWarning ? "warning" : ""}`}>
+                  <div className={`countdown-fill ${speakingWarning ? "warning" : ""}`} style={{ width: `${speakingLeftPercent}%` }} />
+                </div>
+              </div>
               <p className="muted" style={{ marginTop: 0 }}>
                 当前编码：{mySpeakingAttempt.code?.join("-")} · 剩余 {secondsLeft}s
               </p>
@@ -719,11 +717,19 @@ export default function Page() {
             </section>
           )}
 
-          {state.status === "IN_GAME" && state.phase === "GUESSING" && (
+          {state.status === "IN_GAME" && (
             <section className="card" style={{ marginTop: 10 }}>
               <h2 className="title">猜测面板</h2>
-              {guessTargets.length === 0 && <p className="muted">本阶段暂无可提交目标。</p>}
-              {guessTargets.map((attempt) => {
+              {state.phase === "SPEAKING" && (
+                <>
+                  <p className="muted" style={{ marginTop: 8 }}>
+                    发言阶段进行中，猜测将在下一阶段开放。
+                  </p>
+                </>
+              )}
+              {state.phase === "GUESSING" && guessTargets.length === 0 && <p className="muted">本阶段暂无可提交目标。</p>}
+              {state.phase === "GUESSING" &&
+                guessTargets.map((attempt) => {
                 const targetLabel = state.teams.find((team) => team.id === attempt.targetTeamId)?.label ?? attempt.targetTeamId;
                 const isInternal = attempt.targetTeamId === state.me.teamId;
                 const currentGuess = getGuessForTarget(attempt.targetTeamId);

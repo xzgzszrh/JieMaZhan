@@ -258,6 +258,58 @@ select {
   transition: width 220ms ease;
 }
 
+.countdown-block {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 249, 239, 0.78);
+}
+
+.countdown-block.warning {
+  border-color: #d4854d;
+  background: rgba(255, 236, 220, 0.92);
+}
+
+.countdown-seconds {
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.countdown-block.warning .countdown-seconds {
+  color: #b9572e;
+}
+
+.countdown-track {
+  margin-top: 6px;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f6e8ce;
+  overflow: hidden;
+}
+
+.countdown-track.warning {
+  border-color: #d8a179;
+  background: #f6dfcf;
+}
+
+.countdown-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eeb06a 0%, #d79046 100%);
+  transition: width 280ms linear, background 180ms ease;
+}
+
+.countdown-fill.warning {
+  background: linear-gradient(90deg, #e88f52 0%, #ca6133 100%);
+}
+
+.countdown-block.warning.pulse {
+  animation: danger-pulse 900ms ease-in-out infinite;
+}
+
 @keyframes card-enter {
   from {
     opacity: 0;
@@ -295,6 +347,16 @@ select {
   }
 }
 
+@keyframes danger-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(196, 99, 60, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(196, 99, 60, 0.18);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card,
   .stage-card,
@@ -302,5 +364,9 @@ select {
   .btn {
     animation: none !important;
     transition: none !important;
+  }
+
+  .countdown-block.warning.pulse {
+    animation: none !important;
   }
 }
