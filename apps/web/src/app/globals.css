@@ -1,10 +1,14 @@
 :root {
-  --bg: #0a0a0a;
-  --surface: #141414;
-  --line: #2a2a2a;
-  --text: #f6f6f6;
-  --text-muted: #9c9c9c;
-  --accent: #ffffff;
+  --bg: #f6efe2;
+  --surface: #fff9ef;
+  --surface-soft: #f3e7cf;
+  --line: #dbc9ab;
+  --text: #3f3324;
+  --text-muted: #8e7b63;
+  --accent: #d79046;
+  --accent-strong: #be6f2a;
+  --warning: #bb6c36;
+  --danger: #b6473e;
 }
 
 * {
@@ -15,9 +19,14 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: radial-gradient(circle at 70% 0%, #1c1c1c 0%, #0a0a0a 55%);
+  background-color: var(--bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='44' viewBox='0 0 34 44'%3E%3Cg fill='%23bfa27b' fill-opacity='0.17'%3E%3Cpath fill-rule='evenodd' d='M1 6.2C.72 5.55.38 4.94 0 4.36v13.28c.38-.58.72-1.2 1-1.84A12.04 12.04 0 0 0 7.2 22 12.04 12.04 0 0 0 1 28.2c-.28-.65-.62-1.26-1-1.84v13.28c.38-.58.72-1.2 1-1.84A12.04 12.04 0 0 0 7.2 44h21.6a12.05 12.05 0 0 0 5.2-4.36V26.36A12.05 12.05 0 0 0 28.8 22a12.05 12.05 0 0 0 5.2-4.36V4.36A12.05 12.05 0 0 0 28.8 0H7.2A12.04 12.04 0 0 0 1 6.2zM17.36 23H12a10 10 0 1 0 0 20h5.36a11.99 11.99 0 0 1 0-20zm1.28-2H24a10 10 0 1 0 0-20h-5.36a11.99 11.99 0 0 1 0 20zM12 1a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-3.46-2a2 2 0 1 0-3.47 2 2 2 0 0 0 3.47-2zm0-4a2 2 0 1 0-3.47-2 2 2 0 0 0 3.47 2zM12 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm3.46 2a2 2 0 1 0 3.47-2 2 2 0 0 0-3.47 2zm0 4a2 2 0 1 0 3.47 2 2 2 0 0 0-3.47-2zM24 43a10 10 0 1 0 0-20 10 10 0 0 0 0 20zm0-14a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm3.46 2a2 2 0 1 0 3.47-2 2 2 0 0 0-3.47 2zm0 4a2 2 0 1 0 3.47 2 2 2 0 0 0-3.47-2zM24 37a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-3.46-2a2 2 0 1 0-3.47 2 2 2 0 0 0 3.47-2zm0-4a2 2 0 1 0-3.47-2 2 2 0 0 0 3.47 2z'/%3E%3C/g%3E%3C/svg%3E"),
+    radial-gradient(circle at 15% -20%, #fff6dd 0%, transparent 45%),
+    radial-gradient(circle at 90% 0%, #f6e9cd 0%, transparent 50%),
+    linear-gradient(180deg, #f8f1e4 0%, #f3e5cf 60%, #efdcbf 100%);
+  background-size: 34px 44px, auto, auto, auto;
   color: var(--text);
-  font-family: "Helvetica Neue", "PingFang SC", "Noto Sans SC", sans-serif;
+  font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
 }
 
 button,
@@ -36,9 +45,11 @@ select {
 
 .card {
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, #171717 0%, #121212 100%);
+  background: linear-gradient(180deg, rgba(255, 251, 243, 0.96) 0%, rgba(251, 239, 213, 0.92) 100%);
+  box-shadow: 0 10px 28px rgba(162, 126, 77, 0.12);
   border-radius: 14px;
   padding: 12px;
+  animation: card-enter 280ms ease;
 }
 
 .row {
@@ -80,21 +91,27 @@ select {
 .btn {
   width: 100%;
   border: 1px solid var(--line);
-  background: #0f0f0f;
+  background: var(--surface);
   border-radius: 12px;
   min-height: 42px;
   padding: 0 11px;
 }
 
 .btn {
-  background: #fff;
-  color: #000;
-  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent) 0%, #e8b777 100%);
+  color: #fff8ef;
+  font-weight: 700;
+  border-color: #cb8b46;
 }
 
 .btn.secondary {
-  background: #121212;
-  color: #fff;
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.btn:hover {
+  filter: brightness(0.98);
 }
 
 .secret-grid {
@@ -117,7 +134,7 @@ select {
   right: 0;
   bottom: 0;
   padding: 10px 12px 16px;
-  background: linear-gradient(180deg, rgba(10, 10, 10, 0) 0%, rgba(10, 10, 10, 0.94) 40%, rgba(10, 10, 10, 1) 100%);
+  background: linear-gradient(180deg, rgba(246, 239, 226, 0) 0%, rgba(246, 239, 226, 0.88) 40%, rgba(246, 239, 226, 1) 100%);
 }
 
 .drawer {
@@ -127,7 +144,7 @@ select {
   bottom: 0;
   transform: translateY(calc(100% - 58px));
   transition: transform 220ms ease;
-  background: #0f0f0f;
+  background: var(--surface);
   border-top: 1px solid var(--line);
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
@@ -177,7 +194,7 @@ select {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #101010;
+  background: var(--surface);
 }
 
 .progress-grid {
@@ -190,7 +207,7 @@ select {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 8px;
-  background: #121212;
+  background: var(--surface-soft);
 }
 
 .progress-track {
@@ -199,7 +216,7 @@ select {
   height: 8px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: #0b0b0b;
+  background: #f6e8ce;
   overflow: hidden;
 }
 
@@ -210,6 +227,17 @@ select {
 .progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #d9d9d9 0%, #ffffff 100%);
+  background: linear-gradient(90deg, #f1be79 0%, #90c2a1 100%);
   transition: width 220ms ease;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

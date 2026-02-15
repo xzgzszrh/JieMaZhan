@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "截码战 Decrypto Online",
-  description: "Minimalist black and white online decrypto game"
+  description: "Warm beige themed online decrypto game"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

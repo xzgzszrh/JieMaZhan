@@ -352,7 +352,7 @@ export default function Page() {
         <>
           <p className="muted">Decrypto Online</p>
           <h1 className="big-title">截码战</h1>
-          <p className="muted">极简黑白 · 实时对局</p>
+          <p className="muted">米色清新 · 实时对局</p>
         </>
       )}
 
@@ -414,7 +414,7 @@ export default function Page() {
 
                 {availableRooms.length === 0 && <p className="muted">当前没有可加入的房间。</p>}
                 {availableRooms.map((room) => (
-                  <div key={room.roomId} style={{ borderTop: "1px solid #2a2a2a", paddingTop: 8, marginTop: 8 }}>
+                  <div key={room.roomId} style={{ borderTop: "1px solid var(--line)", paddingTop: 8, marginTop: 8 }}>
                     <p style={{ margin: "0 0 6px" }}>
                       <strong>{room.roomName}</strong>
                     </p>
@@ -463,7 +463,7 @@ export default function Page() {
                 {taskSummary}
               </p>
               {state.disconnectState && (
-                <p style={{ margin: "8px 0 0", color: "#ffb86b" }}>
+                <p style={{ margin: "8px 0 0", color: "var(--warning)" }}>
                   断线提醒：{disconnectedNicknames.join("、")} 已离线，{disconnectSecondsLeft}s 内未重连将自动结束对局。
                 </p>
               )}
@@ -583,7 +583,7 @@ export default function Page() {
           <section className="card" style={{ marginTop: 10 }}>
             <h2 className="title">队伍状态</h2>
             {state.teams.map((team) => (
-              <div key={team.id} style={{ borderTop: "1px solid #2a2a2a", paddingTop: 8, marginTop: 8 }}>
+              <div key={team.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 8, marginTop: 8 }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <strong>{team.label}</strong>
                   <span className="muted">积分 {team.score}</span>
@@ -594,7 +594,7 @@ export default function Page() {
               </div>
             ))}
             {state.mySecretWords && (
-              <div style={{ borderTop: "1px solid #2a2a2a", paddingTop: 8, marginTop: 8 }}>
+              <div style={{ borderTop: "1px solid var(--line)", paddingTop: 8, marginTop: 8 }}>
                 <p className="muted" style={{ margin: 0 }}>
                   你的队伍词条
                 </p>
@@ -654,7 +654,7 @@ export default function Page() {
                 const submitted = isTargetSubmittedByMe(attempt.targetTeamId);
 
                 return (
-                  <div key={attempt.targetTeamId} style={{ borderTop: "1px solid #2a2a2a", paddingTop: 10, marginTop: 10 }}>
+                  <div key={attempt.targetTeamId} style={{ borderTop: "1px solid var(--line)", paddingTop: 10, marginTop: 10 }}>
                     <p className="muted" style={{ marginTop: 0 }}>
                       目标：{targetLabel} · 类型：{isInternal ? "本队内猜" : "截获猜测"} · 线索：{(attempt.clues ?? []).join(" / ")}
                     </p>
@@ -733,7 +733,7 @@ export default function Page() {
         </>
       )}
 
-      {error && <p style={{ color: "#ff8f8f" }}>{error}</p>}
+      {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
     </main>
   );
 }
