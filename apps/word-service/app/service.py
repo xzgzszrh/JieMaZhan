@@ -61,12 +61,21 @@ class RelatedWordsService:
         for score, neighbor_word in raw_neighbors:
             if neighbor_word == query_word:
                 continue
+            if not RelatedWordsService._contains_hanzi(neighbor_word):
+                continue
             if neighbor_word in dedup and dedup[neighbor_word] >= score:
                 continue
             dedup[neighbor_word] = score
 
         sorted_items = sorted(dedup.items(), key=lambda item: item[1], reverse=True)[:k]
         return [NeighborItem(word=item_word, score=float(item_score)) for item_word, item_score in sorted_items]
+
+    @staticmethod
+    def _contains_hanzi(word: str) -> bool:
+        for ch in word:
+            if "\u4e00" <= ch <= "\u9fff":
+                return True
+        return False
 
     def calculate_consistency_score(self, words: list[str]) -> float:
         model = self._model_store.get_model_or_none()
