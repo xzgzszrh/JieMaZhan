@@ -1,8 +1,8 @@
-# 猜词截码战 - 项目交接草稿（v4）
+# 猜词截码战 - 项目交接草稿（v5）
 
 ## 1. 目标与范围
 - 目标：实现多人在线猜词截码战，规则为“按顺序描述三词、组内猜顺序、他组截获、统一积分、先到 2 分获胜（支持并列）”。
-- 范围：`apps/server`（Express + Socket.io）与 `apps/web`（Next.js App Router）。
+- 范围：`apps/server`（Express + Socket.io）、`apps/web`（Next.js App Router）、`apps/word-service`（Python + Flask 词语相关度服务）。
 
 ## 2. 已确认规则（当前实现）
 - 每组 2 人，每组 4 个词（编号 1/2/3/4）。
@@ -26,6 +26,8 @@
   - 词条改为仅中文：`SecretWordSlot` 仅保留 `{ index, zh }`，不再使用英文字段。
   - 词库改为后端文件加载：服务端从 `apps/server/src/data/thuocl_words_max4.txt` 读取，不再硬编码在 `word-bank.ts`。
   - 每队 4 词抽取改为“从大词库按 seed 抽 4 个不重复词”，支持可复现。
+  - `ai:action` 已接入独立词语服务：对编码对应的 3 个目标词分别查询近邻词（Top 10），每词随机抽 1 个作为线索。
+  - AI 线索生成保留降级兜底：当词语服务不可用/超时时，回退为目标词前 2 个字，避免功能中断。
 - 房间能力
   - 创建房间后命名为 `XXX的房间`。
   - 大厅支持 `room:list` 与 `rooms:update` 的可加入房间列表。
@@ -49,6 +51,13 @@
     - 仅保留频次 `> 10000`
     - 跳过脏数据（频次非纯数字）
     - 输出为一行一个中文词（无数字）
+- 词语相关度服务（新增）
+  - 新增目录 `apps/word-service/`，与 Node 游戏后端分离部署。
+  - 模型目录：`apps/word-service/models/`（已局部 `.gitignore` 忽略）。
+  - 服务启动时会自动加载 fastText 模型并执行一次预热推理，降低首次请求延迟。
+  - 提供接口：
+    - `GET /health`
+    - `POST /api/v1/related-words`（`word` + `k`，默认 `k=10`，受 `MAX_K` 限制）。
 
 ## 4. 关键链路（交接必读）
 - 创建房间
@@ -65,6 +74,13 @@
   2. 运行 `python3.11 wordslib/extract_thuocl_max4.py` 产出 `wordslib/data/processed/thuocl_words_max4.txt`。
   3. 将产出复制到 `apps/server/src/data/thuocl_words_max4.txt`。
   4. 服务端启动时在 `apps/server/src/core/word-bank.ts` 读取该文件并用于抽词。
+- AI 词语服务接入链路（新增）
+  1. 启动 Python 词语服务（默认端口 `4201`）。
+  2. Node 服务通过环境变量 `WORD_SERVICE_URL` 指向词语服务（默认 `http://127.0.0.1:4201`）。
+  3. 前端触发 `ai:action` 时，Node 在 `setAgentInterface` 内调用词语服务：
+     - 对每个目标词调用 `POST /api/v1/related-words` 请求 Top 10
+     - 从每组近邻词随机选 1 个作为线索
+     - 若请求失败则对该词使用降级线索（前 2 字）
 - 对局中断线处理（新增）
   1. 任意玩家断线后，服务端在 `IN_GAME` 下启动 30s 宽限计时并写入 `disconnectState`。
   2. 宽限期内重连成功（`room:reconnect`）则取消断线状态并继续对局。
@@ -100,6 +116,8 @@
   - 事件入口：`apps/server/src/index.ts`
   - 业务核心：`apps/server/src/core/game-service.ts`
   - 词库加载：`apps/server/src/core/word-bank.ts`
+  - AI 线索生成：`apps/server/src/core/ai-clue-generator.ts`
+  - 词语服务客户端：`apps/server/src/core/word-service-client.ts`
   - 词库文件：`apps/server/src/data/thuocl_words_max4.txt`
   - 参数校验：`apps/server/src/core/schemas.ts`
   - 类型定义：`apps/server/src/types/game.ts`
@@ -107,6 +125,17 @@
   - 页面：`apps/web/src/app/page.tsx`
   - socket 封装：`apps/web/src/hooks/useGameSocket.ts`
   - 视图类型：`apps/web/src/types/game.ts`
+- 词语服务（新增）
+  - 入口：`apps/word-service/run.py`
+  - app 组装：`apps/word-service/app/__init__.py`
+  - 配置：`apps/word-service/app/config.py`
+  - 路由：`apps/word-service/app/routes.py`
+  - 业务服务：`apps/word-service/app/service.py`
+  - 模型加载：`apps/word-service/app/model_loader.py`
+  - 请求校验：`apps/word-service/app/schemas.py`
+  - 错误模型：`apps/word-service/app/errors.py`
+  - 依赖：`apps/word-service/requirements.txt`
+  - 设计文档：`apps/word-service/DESIGN.md`
 - 词库工具（新增）
   - 下载脚本：`wordslib/download_sources.py`
   - 清洗脚本：`wordslib/extract_thuocl_max4.py`
@@ -119,6 +148,9 @@
 - 记录区 UI 已简化为纯线索表，不再展示轮次与加分详情；如需审计解释可考虑单独“裁判日志”视图。
 - 词库中存在少量脏数据行（如频次含非数字字符），当前清洗脚本已跳过；若后续更换数据源，需复用同类校验。
 - 词库文件目前通过手动复制进入 `apps/server/src/data/`；如后续频繁更新，建议加自动同步脚本或 npm script。
+- AI 线索依赖外部内部服务（`apps/word-service`）；若服务未启动/超时，当前会回退到简化线索（前 2 字），可用性优先但语义质量会下降。
+- Node 到词语服务调用当前默认超时为 `1500ms`（`WORD_SERVICE_TIMEOUT_MS`）；网络抖动下可能触发降级。
+- 词语服务返回“随机抽取”结果，AI 线索天然不稳定（同一词多次调用可能不同），属于预期行为。
 
 ## 8. 完整游戏逻辑
 2队伍4人情况:

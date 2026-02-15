@@ -31,6 +31,17 @@ class FastTextModelStore:
             self._model = None
             self._load_error = str(exc)
 
+    def warm_up(self, probe_word: str = "中国") -> None:
+        model = self._model
+        if model is None:
+            return
+        try:
+            # Trigger one lightweight inference path to reduce first-request latency.
+            model.get_nearest_neighbors(probe_word, k=1)
+        except Exception:
+            # Warm-up failure should not block service start.
+            pass
+
     @property
     def is_ready(self) -> bool:
         return self._model is not None

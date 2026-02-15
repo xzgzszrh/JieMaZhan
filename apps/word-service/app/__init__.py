@@ -14,6 +14,7 @@ def create_app() -> tuple[Flask, Settings]:
 
     model_store = FastTextModelStore(settings.model_path)
     model_store.load()
+    model_store.warm_up()
     related_words_service = RelatedWordsService(model_store)
 
     app = Flask(__name__)
