@@ -458,17 +458,6 @@ export default function Page() {
     await leaveRoom();
   };
 
-  const toggleDebugMode = () => {
-    const params = new URLSearchParams(window.location.search);
-    if (debugMultiPlayer) {
-      params.delete("debug_multi_player");
-    } else {
-      params.set("debug_multi_player", "1");
-    }
-    const nextQuery = params.toString();
-    window.location.search = nextQuery ? `?${nextQuery}` : "";
-  };
-
   useEffect(() => {
     return () => {
       Object.values(successTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
@@ -537,7 +526,6 @@ export default function Page() {
         <>
           <p className="muted">Decrypto Online</p>
           <h1 className="big-title">截码战</h1>
-          <p className="muted">米色清新 · 实时对局</p>
         </>
       )}
 
@@ -1106,15 +1094,6 @@ export default function Page() {
           </div>
         </>
       )}
-
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-        <p className="muted" style={{ margin: 0 }}>
-          调试模式：{debugMultiPlayer ? "开（多标签独立身份）" : "关（多标签共享身份）"}
-        </p>
-        <button className="btn secondary" style={{ width: "auto", minHeight: 34 }} onClick={toggleDebugMode}>
-          {debugMultiPlayer ? "关闭调试" : "开启调试"}
-        </button>
-      </div>
 
       {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
       {confirmDialogNode}
