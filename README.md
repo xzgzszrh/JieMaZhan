@@ -17,8 +17,6 @@ npm run dev:web
 cp .env.example .env
 ```
 
-- Web (`apps/web`): `NEXT_PUBLIC_SERVER_URL`
-  - Empty by default = auto-connect same-origin.
 - Server (`apps/server`): `PORT`, `CORS_ORIGINS`, `WORD_SERVICE_URL`, `WORD_SERVICE_TIMEOUT_MS`
 - Word service (`apps/word-service`): `PORT`, `MAX_K`, `FASTTEXT_MODEL_PATH`
 
