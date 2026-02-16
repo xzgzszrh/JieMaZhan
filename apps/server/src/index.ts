@@ -19,7 +19,24 @@ import {
 import { WordServiceClient } from "./core/word-service-client.js";
 
 const app = express();
-app.use(cors());
+const parseAllowedOrigins = (): "*" | string[] => {
+  const raw = process.env.CORS_ORIGINS?.trim();
+  if (!raw) {
+    return "*";
+  }
+  const origins = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (origins.length === 0 || origins.includes("*")) {
+    return "*";
+  }
+  return origins;
+};
+
+const allowedOrigins = parseAllowedOrigins();
+
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
@@ -29,7 +46,7 @@ app.get("/health", (_req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*"
+    origin: allowedOrigins
   }
 });
 

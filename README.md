@@ -12,6 +12,16 @@ npm run dev:server
 npm run dev:web
 ```
 
+## Environment Variables
+```bash
+cp .env.example .env
+```
+
+- Web (`apps/web`): `NEXT_PUBLIC_SERVER_URL`
+  - Empty by default = auto-connect same-origin.
+- Server (`apps/server`): `PORT`, `CORS_ORIGINS`, `WORD_SERVICE_URL`, `WORD_SERVICE_TIMEOUT_MS`
+- Word service (`apps/word-service`): `PORT`, `MAX_K`, `FASTTEXT_MODEL_PATH`
+
 - Web: `http://localhost:3000`
 - Server: `http://localhost:4100`
 
